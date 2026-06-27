@@ -1,0 +1,548 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Cipher Inspector — 점검용 AES 워크벤치</title>
+<style>
+  :root {
+    --bg:#eef0f4; --panel:#ffffff; --raised:#f3f4f7; --line:#e3e6ec; --line-soft:#eef0f4;
+    --ink:#1b2230; --muted:#697086; --faint:#a4abb8;
+    --brass:#a9741b; --brass-dim:#8a5e12; --brass-soft:rgba(169,116,27,.12);
+    --ok:#1a9e7e; --warn:#c4502a; --warn-soft:rgba(196,80,42,.10);
+    --mono:ui-monospace,"JetBrains Mono","SFMono-Regular",Menlo,Consolas,monospace;
+    --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; }
+  body {
+    background:radial-gradient(1000px 540px at 50% -12%, #ffffff 0%, transparent 62%), var(--bg);
+    color:var(--ink); font-family:var(--sans);
+    display:flex; justify-content:center; padding:40px 18px 60px; min-height:100%;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap { width:100%; max-width:920px; }
+
+  .head { display:flex; align-items:center; gap:11px; margin:0 4px 18px; }
+  .mark { width:28px; height:28px; flex:none; border:1.5px solid var(--brass); border-radius:7px; position:relative; }
+  .mark::before { content:""; position:absolute; left:50%; top:6px; transform:translateX(-50%); width:6px; height:6px; border-radius:50%; background:var(--brass); }
+  .mark::after { content:""; position:absolute; left:50%; top:12px; transform:translateX(-50%); width:3px; height:8px; background:var(--brass); border-radius:0 0 2px 2px; }
+  h1 { font-family:var(--mono); font-size:18px; font-weight:600; margin:0; }
+  .tag { font-family:var(--mono); font-size:10px; color:var(--faint); letter-spacing:.12em; text-transform:uppercase; margin-left:auto; }
+
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:15px; padding:18px 16px 14px; box-shadow:0 1px 2px rgba(20,28,46,.04), 0 8px 24px rgba(20,28,46,.05); }
+
+  label { display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); margin:0 0 7px 2px; }
+
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+  .row3 { display:grid; grid-template-columns:1fr auto; gap:8px; }
+  .field { margin-bottom:14px; }
+
+  textarea, input[type=text], select {
+    width:100%; background:var(--raised); color:var(--ink); border:1px solid var(--line); border-radius:9px;
+    padding:11px 12px; font-family:var(--mono); font-size:13px; line-height:1.5; transition:.16s;
+  }
+  textarea { min-height:150px; resize:vertical; white-space:pre-wrap; word-break:break-all; background:#fbfcfd; }
+  textarea:focus, input:focus, select:focus { outline:none; border-color:var(--brass-dim); box-shadow:0 0 0 3px var(--brass-soft); background:#fff; }
+  input:disabled { opacity:.5; cursor:not-allowed; }
+  select { cursor:pointer; appearance:none; background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%); background-position:calc(100% - 16px) 18px,calc(100% - 11px) 18px; background-size:5px 5px,5px 5px; background-repeat:no-repeat; padding-right:30px; }
+  .fmt { width:118px; }
+  ::placeholder { color:var(--faint); }
+  .hidden { display:none !important; }
+
+  .ivopts { display:flex; align-items:center; gap:16px; margin:9px 2px 0; flex-wrap:wrap; }
+  .check { display:flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; color:var(--muted); cursor:pointer; user-select:none; }
+  .check input { accent-color:var(--brass); width:14px; height:14px; margin:0; }
+  .linkbtn { background:none; border:0; color:var(--brass); font-family:var(--mono); font-size:11px; cursor:pointer; padding:0; }
+  .linkbtn:hover { text-decoration:underline; }
+  .hint { font-family:var(--mono); font-size:10.5px; color:var(--warn); margin:4px 2px 0; min-height:13px; line-height:1.5; }
+
+  .bar { display:flex; align-items:center; gap:10px; margin:14px 2px 12px; padding-top:12px; border-top:1px dashed var(--line); flex-wrap:wrap; }
+  .btn { font-family:var(--mono); font-size:12px; font-weight:600; border:1px solid var(--brass-soft); background:var(--brass-soft); color:var(--brass-dim); border-radius:8px; padding:8px 13px; cursor:pointer; transition:.14s; }
+  .btn:hover { background:rgba(169,116,27,.2); }
+  .btn:active { transform:translateY(1px); }
+  .btn.solid { background:linear-gradient(180deg,#c79235,var(--brass-dim)); color:#fff; border-color:transparent; }
+  .btn.solid:hover { filter:brightness(1.05); }
+  .spacer { margin-left:auto; }
+
+  .convert { display:grid; grid-template-columns:1fr 40px 1fr; gap:10px; align-items:stretch; }
+  .pane { display:flex; flex-direction:column; min-width:0; }
+  .paneHead { display:flex; align-items:center; gap:8px; margin-bottom:7px; min-height:44px; }
+  .paneHead label { margin:0; }
+  .paneHead .fmt { width:108px; margin-left:auto; }
+  .paneHead .copy { margin-left:auto; }
+  .paneHead .fmt + .copy { margin-left:8px; }
+  .copy { font-family:var(--mono); font-size:11px; color:var(--brass-dim); background:var(--brass-soft); border:1px solid var(--brass-soft); border-radius:7px; padding:5px 10px; cursor:pointer; }
+  .copy:hover { background:rgba(169,116,27,.2); }
+  .pstatus { font-family:var(--mono); font-size:11px; line-height:1.5; margin:7px 2px 0; min-height:15px; }
+  .pstatus.ok { color:var(--ok); } .pstatus.bad { color:var(--warn); } .pstatus.idle { color:var(--faint); }
+  textarea.flash { box-shadow:0 0 0 3px var(--brass-soft); border-color:var(--brass-dim); }
+
+  .arrow { display:flex; align-items:center; justify-content:center; color:var(--faint); font-size:18px; user-select:none; }
+  .arrow::after { content:"⇄"; }
+
+  .foot { font-family:var(--mono); font-size:10.5px; color:var(--faint); text-align:center; margin:16px 4px 0; line-height:1.7; }
+
+  @media (max-width:660px){
+    .grid { grid-template-columns:1fr; }
+    .convert { grid-template-columns:1fr; }
+    .arrow { padding:2px 0; }
+    .arrow::after { content:"⇅"; }
+  }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header class="head">
+      <span class="mark" aria-hidden="true"></span>
+      <h1>Cipher Inspector</h1>
+      <span class="tag">웹점검용 · AES · 양방향</span>
+    </header>
+
+    <div class="card">
+      <div class="grid">
+        <div>
+          <label for="scheme">방식</label>
+          <select id="scheme">
+            <option value="cbc">AES-CBC (key + IV)</option>
+            <option value="gcm">AES-GCM (key + nonce + 태그)</option>
+            <option value="ctr">AES-CTR (key + IV)</option>
+            <option value="ecb">AES-ECB (key)</option>
+            <option value="pass">Passphrase (CryptoJS / OpenSSL, U2FsdGVk…)</option>
+          </select>
+        </div>
+        <div id="padWrap">
+          <label for="padding">패딩</label>
+          <select id="padding">
+            <option value="Pkcs7">Pkcs7 (기본)</option>
+            <option value="NoPadding">NoPadding</option>
+            <option value="ZeroPadding">ZeroPadding</option>
+            <option value="Iso97971">Iso97971</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field" id="setKey">
+        <label id="keyLabel" for="key">키 / 비밀번호</label>
+        <div class="row3">
+          <input id="key" type="text" placeholder="JS 소스에서 찾은 키 입력" autocomplete="off" spellcheck="false" />
+          <select id="keyFmt" class="fmt">
+            <option value="Utf8">UTF-8</option>
+            <option value="Hex">Hex</option>
+            <option value="Base64">Base64</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field" id="ivField">
+        <label for="iv">IV / Nonce</label>
+        <div class="row3">
+          <input id="iv" type="text" placeholder="초기화 벡터 (CBC/CTR 16바이트, GCM 12바이트)" autocomplete="off" spellcheck="false" />
+          <select id="ivFmt" class="fmt">
+            <option value="Hex">Hex</option>
+            <option value="Utf8">UTF-8</option>
+            <option value="Base64">Base64</option>
+          </select>
+        </div>
+        <div class="ivopts">
+          <label class="check"><input type="checkbox" id="ivPrepend" /> IV가 암호문 앞에 포함 (복호화 시 분리 · 암호화 시 결합)</label>
+          <button class="linkbtn" id="genIv" type="button">🎲 무작위 IV</button>
+        </div>
+      </div>
+
+      <div class="field hidden" id="tagField">
+        <label for="tag">인증 태그 (GCM · 비우면 암호문 끝에 붙어 있는 것으로 간주)</label>
+        <div class="row3">
+          <input id="tag" type="text" placeholder="GCM auth tag (보통 16바이트)" autocomplete="off" spellcheck="false" />
+          <select id="tagFmt" class="fmt">
+            <option value="Hex">Hex</option>
+            <option value="Base64">Base64</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="field hidden" id="aadField">
+        <label for="aad">추가 인증 데이터 AAD (GCM · 선택)</label>
+        <div class="row3">
+          <input id="aad" type="text" placeholder="associated data (없으면 비워두기)" autocomplete="off" spellcheck="false" />
+          <select id="aadFmt" class="fmt">
+            <option value="Utf8">UTF-8</option>
+            <option value="Hex">Hex</option>
+            <option value="Base64">Base64</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="hint" id="hint"></div>
+
+      <div class="bar">
+        <label class="check"><input type="checkbox" id="auto" checked /> 자동 변환 (입력·붙여넣기 즉시)</label>
+        <span class="spacer"></span>
+        <button class="btn" id="doDec" type="button">복호화 ↑</button>
+        <button class="btn solid" id="doEnc" type="button">암호화 ↓</button>
+      </div>
+
+      <div class="convert">
+        <div class="pane">
+          <div class="paneHead">
+            <label for="pt">평문 (Plaintext)</label>
+            <button class="copy" id="copyPt" type="button">복사</button>
+          </div>
+          <textarea id="pt" placeholder="평문을 입력하면 자동으로 암호화됩니다 (JSON 등)"></textarea>
+          <div class="pstatus idle" id="ptStatus"></div>
+        </div>
+
+        <div class="arrow" aria-hidden="true"></div>
+
+        <div class="pane">
+          <div class="paneHead">
+            <label for="ct">암호문 (Ciphertext)</label>
+            <select id="ctFmt" class="fmt">
+              <option value="Auto" id="autoOpt">자동감지</option>
+              <option value="Base64">Base64</option>
+              <option value="Hex">Hex</option>
+            </select>
+            <button class="copy" id="copyCt" type="button">복사</button>
+          </div>
+          <textarea id="ct" placeholder="암호문을 붙여넣으면 자동으로 복호화됩니다"></textarea>
+          <div class="pstatus idle" id="ctStatus"></div>
+        </div>
+      </div>
+    </div>
+
+    <p class="foot">
+      대상 앱의 JS에서 <b>aes / encrypt / key / iv / mode / tag</b> 를 검색해 파라미터를 찾아 입력하세요.<br>
+      처리는 브라우저 안에서만 일어나며 어디에도 전송되지 않습니다. 입력은 이 브라우저에만 임시 저장됩니다 ·
+      <button class="linkbtn" id="clearAll" type="button">전체 지우기</button>
+    </p>
+  </div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.2.0/crypto-js.min.js"></script>
+<script>
+(function () {
+  "use strict";
+  const $ = (id) => document.getElementById(id);
+  let enc = null;          // CryptoJS.enc (boot 시 설정)
+  let suppress = false;    // 프로그램 입력 시 핸들러 차단
+  let lastSrc = "ct";      // 마지막으로 사람이 편집한 쪽: 'pt' | 'ct'
+  let timer = null;
+
+  /* ---------- 인코딩/변환 헬퍼 ---------- */
+  function parseWA(text, fmt) {
+    if (fmt === "Hex") return enc.Hex.parse(text);
+    if (fmt === "Base64") return enc.Base64.parse(text);
+    return enc.Utf8.parse(text);
+  }
+  function parseCipher(input) {
+    const t = input.replace(/\s+/g, "");
+    const fmt = $("ctFmt").value;
+    if (fmt === "Hex") return { wa: enc.Hex.parse(t), fmt: "Hex", auto: false };
+    if (fmt === "Base64") return { wa: enc.Base64.parse(t), fmt: "Base64", auto: false };
+    if (/^[0-9a-fA-F]+$/.test(t) && t.length % 2 === 0)
+      return { wa: enc.Hex.parse(t), fmt: "Hex", auto: true };
+    return { wa: enc.Base64.parse(t), fmt: "Base64", auto: true };
+  }
+  function waToU8(wa) {
+    const { words, sigBytes } = wa, u8 = new Uint8Array(sigBytes);
+    for (let i = 0; i < sigBytes; i++) u8[i] = (words[i >>> 2] >>> (24 - (i % 4) * 8)) & 0xff;
+    return u8;
+  }
+  function u8ToWA(u8) { return CryptoJS.lib.WordArray.create(u8); }
+  function concatU8(a, b) { const r = new Uint8Array(a.length + b.length); r.set(a, 0); r.set(b, a.length); return r; }
+  function randomU8(n) { return crypto.getRandomValues(new Uint8Array(n)); }
+  function keyBytes() { try { return waToU8(parseWA($("key").value, $("keyFmt").value)).length; } catch (e) { return -1; } }
+
+  function modeObj(s) { return s === "ecb" ? CryptoJS.mode.ECB : s === "ctr" ? CryptoJS.mode.CTR : CryptoJS.mode.CBC; }
+  function padObj(p) { return CryptoJS.pad[p] || CryptoJS.pad.Pkcs7; }
+  function outFmt() { return $("ctFmt").value === "Hex" ? "Hex" : "Base64"; }
+  function fmtBytes(wa) { return wa.toString(outFmt() === "Hex" ? enc.Hex : enc.Base64); }
+  function decodeWA(wa) {
+    const utf8 = wa.toString(enc.Utf8);
+    if (utf8) return { text: utf8, note: "" };
+    const hex = wa.toString(enc.Hex);
+    return { text: hex, note: "UTF-8 아님 · hex 표시" };
+  }
+
+  /* ---------- 복호화 (ct → pt) ---------- */
+  async function decrypt(scheme, input) {
+    if (scheme === "pass") {
+      const wa = CryptoJS.AES.decrypt(input, $("key").value);
+      if (wa.sigBytes <= 0) throw new Error("empty");
+      return decodeWA(wa);
+    }
+    if (scheme === "gcm") {
+      const keyU8 = gcmKey();
+      const aadU8 = gcmAad();
+      const parsed = parseCipher(input);
+      let dataU8 = waToU8(parsed.wa), ivU8;
+      if ($("ivPrepend").checked) {
+        if (dataU8.length <= 12) throw new Error("short");
+        ivU8 = dataU8.slice(0, 12); dataU8 = dataU8.slice(12);
+      } else ivU8 = waToU8(parseWA($("iv").value, $("ivFmt").value));
+      const tagText = $("tag").value.trim();
+      const ctU8 = tagText ? concatU8(dataU8, waToU8(parseWA(tagText, $("tagFmt").value))) : dataU8;
+      const k = await crypto.subtle.importKey("raw", keyU8, { name: "AES-GCM" }, false, ["decrypt"]);
+      const params = { name: "AES-GCM", iv: ivU8, tagLength: 128 };
+      if (aadU8) params.additionalData = aadU8;
+      const ptBuf = await crypto.subtle.decrypt(params, k, ctU8);
+      const res = decodeWA(u8ToWA(new Uint8Array(ptBuf)));
+      res.note = (res.note ? res.note + " · " : "") + "태그 검증 성공" + (parsed.auto ? " · " + parsed.fmt + " 감지" : "");
+      return res;
+    }
+    // CBC / CTR / ECB
+    const key = parseWA($("key").value, $("keyFmt").value);
+    const cfg = { mode: modeObj(scheme), padding: padObj($("padding").value) };
+    const needsIv = scheme !== "ecb";
+    const parsed = parseCipher(input);
+    let ctWA = parsed.wa;
+    if (needsIv && $("ivPrepend").checked) {
+      const all = waToU8(ctWA);
+      if (all.length <= 16) throw new Error("short");
+      cfg.iv = u8ToWA(all.slice(0, 16));
+      ctWA = u8ToWA(all.slice(16));
+    } else if (needsIv) {
+      cfg.iv = parseWA($("iv").value, $("ivFmt").value);
+    }
+    const out = CryptoJS.AES.decrypt({ ciphertext: ctWA }, key, cfg);
+    if (out.sigBytes <= 0) throw new Error("empty");
+    const res = decodeWA(out);
+    if (parsed.auto) res.note = (res.note ? res.note + " · " : "") + parsed.fmt + " 감지";
+    return res;
+  }
+
+  /* ---------- 암호화 (pt → ct) ---------- */
+  async function encrypt(scheme, input) {
+    if (scheme === "pass") {
+      return { text: CryptoJS.AES.encrypt(input, $("key").value).toString(), note: "" };
+    }
+    if (scheme === "gcm") {
+      const keyU8 = gcmKey();
+      const aadU8 = gcmAad();
+      const prepend = $("ivPrepend").checked;
+      const ivU8 = prepend ? randomU8(12) : waToU8(parseWA($("iv").value, $("ivFmt").value));
+      const ptU8 = waToU8(enc.Utf8.parse(input));
+      const k = await crypto.subtle.importKey("raw", keyU8, { name: "AES-GCM" }, false, ["encrypt"]);
+      const params = { name: "AES-GCM", iv: ivU8, tagLength: 128 };
+      if (aadU8) params.additionalData = aadU8;
+      const ctBuf = await crypto.subtle.encrypt(params, k, ptU8);
+      let ctU8 = new Uint8Array(ctBuf); // ciphertext || tag
+      if (prepend) ctU8 = concatU8(ivU8, ctU8);
+      return { text: fmtBytes(u8ToWA(ctU8)), note: "태그 포함" + (prepend ? " · nonce 결합" : "") };
+    }
+    const key = parseWA($("key").value, $("keyFmt").value);
+    const cfg = { mode: modeObj(scheme), padding: padObj($("padding").value) };
+    const needsIv = scheme !== "ecb";
+    const prepend = needsIv && $("ivPrepend").checked;
+    let ivWA = null;
+    if (prepend) ivWA = u8ToWA(randomU8(16));
+    else if (needsIv) ivWA = parseWA($("iv").value, $("ivFmt").value);
+    if (ivWA) cfg.iv = ivWA;
+    const encd = CryptoJS.AES.encrypt(enc.Utf8.parse(input), key, cfg);
+    let ctWA = encd.ciphertext;
+    if (prepend) ctWA = u8ToWA(concatU8(waToU8(ivWA), waToU8(ctWA)));
+    return { text: fmtBytes(ctWA), note: prepend ? "IV 결합" : "" };
+  }
+
+  function gcmKey() {
+    const keyU8 = waToU8(parseWA($("key").value, $("keyFmt").value));
+    if (![16, 24, 32].includes(keyU8.length)) throw new Error("keylen:" + keyU8.length);
+    return keyU8;
+  }
+  function gcmAad() {
+    const t = $("aad").value;
+    return t ? waToU8(parseWA(t, $("aadFmt").value)) : null;
+  }
+
+  function errMsg(scheme, e) {
+    const m = String((e && e.message) || e);
+    if (m.indexOf("keylen:") === 0)
+      return "✕ 키 " + m.split(":")[1] + "바이트 — AES는 16/24/32 필요 (키 형식 확인)";
+    if (scheme === "gcm" && (e.name === "OperationError" || /operation|decrypt/i.test(m)))
+      return "✕ GCM 인증 실패 — 키·Nonce·태그·AAD 불일치 또는 태그 누락";
+    if (m === "short") return "✕ 너무 짧음 — ‘IV 포함’ 옵션 또는 입력 확인";
+    if (m === "empty") return "✕ 결과가 비어 있음 — 키·IV·패딩·인코딩 확인";
+    return "✕ 실패 — 방식·키·IV·패딩·인코딩 중 하나가 대상과 다름";
+  }
+
+  /* ---------- 변환 오케스트레이션 ---------- */
+  async function convert(src) {
+    if (!window.CryptoJS) return;
+    const scheme = $("scheme").value;
+    if (src === "pt") {
+      const input = $("pt").value;
+      if (!input) { setVal($("ct"), ""); status("ct", "idle", ""); status("pt", "idle", ""); return; }
+      try {
+        const r = await encrypt(scheme, input);
+        setVal($("ct"), r.text);
+        flash($("ct"));
+        status("ct", "ok", "✓ 암호화" + (r.note ? " · " + r.note : "") + " · " + byteHint(r.text));
+        status("pt", "idle", input.length.toLocaleString() + "자");
+      } catch (e) {
+        status("ct", "bad", errMsg(scheme, e));
+      }
+    } else {
+      const input = $("ct").value.trim();
+      if (!input) { setVal($("pt"), ""); status("pt", "idle", ""); status("ct", "idle", ""); return; }
+      try {
+        const r = await decrypt(scheme, input);
+        setVal($("pt"), r.text);
+        flash($("pt"));
+        status("pt", "ok", "✓ 복호화" + (r.note ? " · " + r.note : "") + " · " + r.text.length.toLocaleString() + "자");
+        status("ct", "idle", "");
+      } catch (e) {
+        status("pt", "bad", errMsg(scheme, e));
+      }
+    }
+    save();
+  }
+  function schedule(src) {
+    lastSrc = src;
+    if (!$("auto").checked) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => convert(src), 220);
+  }
+  function setVal(el, v) { suppress = true; el.value = v; suppress = false; }
+  function status(side, cls, text) {
+    const el = $(side === "pt" ? "ptStatus" : "ctStatus");
+    el.className = "pstatus " + cls;
+    el.textContent = text;
+  }
+  function byteHint(text) {
+    try { return parseCipher(text).wa.sigBytes.toLocaleString() + " bytes"; } catch (e) { return text.length + "자"; }
+  }
+  function flash(el) { el.classList.add("flash"); setTimeout(() => el.classList.remove("flash"), 320); }
+
+  /* ---------- UI 동기화 ---------- */
+  function syncFields() {
+    const scheme = $("scheme").value;
+    const isPass = scheme === "pass";
+    const isGcm  = scheme === "gcm";
+    const needsIv = scheme === "cbc" || scheme === "ctr" || scheme === "gcm";
+    const hasPad  = scheme === "cbc" || scheme === "ecb";
+
+    $("ivField").classList.toggle("hidden", isPass || !needsIv);
+    $("tagField").classList.toggle("hidden", !isGcm);
+    $("aadField").classList.toggle("hidden", !isGcm);
+    $("padWrap").classList.toggle("hidden", !hasPad);
+    $("keyLabel").textContent = isPass ? "비밀번호 (passphrase)" : "키";
+    $("keyFmt").classList.toggle("hidden", isPass);
+    $("ctFmt").classList.toggle("hidden", isPass); // passphrase 출력은 항상 OpenSSL base64
+    $("iv").placeholder = isGcm ? "nonce (보통 12바이트)" : "초기화 벡터 (보통 16바이트)";
+    toggleIvPrepend();
+    liveCheck();
+  }
+  function toggleIvPrepend() {
+    const on = $("ivPrepend").checked;
+    $("iv").disabled = on;
+    $("genIv").classList.toggle("hidden", on);
+  }
+  function liveCheck() {
+    if (!enc) return;
+    const scheme = $("scheme").value, msgs = [];
+    if (scheme !== "pass" && $("key").value) {
+      const kl = keyBytes();
+      if (kl >= 0 && ![16, 24, 32].includes(kl)) msgs.push("키 " + kl + "바이트 — AES는 16/24/32 필요");
+    }
+    if ((scheme === "cbc" || scheme === "ctr" || scheme === "gcm") && !$("ivPrepend").checked && $("iv").value) {
+      try {
+        const il = waToU8(parseWA($("iv").value, $("ivFmt").value)).length;
+        const want = scheme === "gcm" ? 12 : 16;
+        if (il !== want) msgs.push((scheme === "gcm" ? "Nonce " : "IV ") + il + "바이트 — 보통 " + want);
+      } catch (e) {}
+    }
+    $("hint").textContent = msgs.join("  ·  ");
+  }
+
+  /* ---------- 상태 저장/복원 ---------- */
+  const FIELDS = ["scheme","padding","key","keyFmt","iv","ivFmt","ctFmt","tag","tagFmt","aad","aadFmt","pt","ct"];
+  const STORE = "cipherInspector.v3";
+  function save() {
+    try {
+      const o = { lastSrc, ivPrepend: $("ivPrepend").checked, auto: $("auto").checked };
+      FIELDS.forEach((f) => (o[f] = $(f).value));
+      localStorage.setItem(STORE, JSON.stringify(o));
+    } catch (e) {}
+  }
+  function load() {
+    try {
+      const o = JSON.parse(localStorage.getItem(STORE) || "{}");
+      FIELDS.forEach((f) => { if (o[f] != null && $(f)) $(f).value = o[f]; });
+      if (o.ivPrepend) $("ivPrepend").checked = true;
+      if (o.auto === false) $("auto").checked = false;
+      if (o.lastSrc) lastSrc = o.lastSrc;
+    } catch (e) {}
+  }
+
+  /* ---------- 이벤트 ---------- */
+  function wire() {
+    // 설정 변경 → 마지막 편집 쪽 기준 재변환
+    ["scheme","padding","key","keyFmt","iv","ivFmt","ctFmt","tag","tagFmt","aad","aadFmt"].forEach((f) => {
+      const el = $(f);
+      const h = () => { if (f === "scheme") syncFields(); liveCheck(); schedule(lastSrc); save(); };
+      el.addEventListener("input", h);
+      el.addEventListener("change", h);
+    });
+    $("ivPrepend").onchange = () => { toggleIvPrepend(); liveCheck(); schedule(lastSrc); save(); };
+    $("auto").onchange = save;
+    $("genIv").onclick = () => {
+      const n = $("scheme").value === "gcm" ? 12 : 16;
+      $("iv").value = u8ToWA(randomU8(n)).toString(enc.Hex);
+      $("ivFmt").value = "Hex";
+      liveCheck(); schedule(lastSrc); save();
+    };
+
+    $("pt").addEventListener("input", () => { if (!suppress) schedule("pt"); });
+    $("ct").addEventListener("input", () => { if (!suppress) schedule("ct"); });
+
+    $("doEnc").onclick = () => { lastSrc = "pt"; convert("pt"); };
+    $("doDec").onclick = () => { lastSrc = "ct"; convert("ct"); };
+    document.addEventListener("keydown", (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") convert(lastSrc);
+    });
+
+    $("copyPt").onclick = () => copy($("pt").value, $("copyPt"));
+    $("copyCt").onclick = () => copy($("ct").value, $("copyCt"));
+
+    $("clearAll").onclick = () => {
+      try { localStorage.removeItem(STORE); } catch (e) {}
+      FIELDS.forEach((f) => { const el = $(f); if (el.tagName === "SELECT") el.selectedIndex = 0; else el.value = ""; });
+      $("ivPrepend").checked = false;
+      status("pt", "idle", ""); status("ct", "idle", "");
+      lastSrc = "ct";
+      syncFields();
+    };
+  }
+  async function copy(text, btn) {
+    try {
+      await navigator.clipboard.writeText(text);
+      const t = btn.textContent; btn.textContent = "복사됨 ✓";
+      setTimeout(() => (btn.textContent = t), 1200);
+    } catch (e) {}
+  }
+
+  /* ---------- 부팅 ---------- */
+  function boot() {
+    enc = CryptoJS.enc;
+    wire();
+    load();
+    syncFields();
+    // 복원된 내용이 있으면 한 번 변환해 양쪽을 맞춰줌
+    if ($(lastSrc === "pt" ? "pt" : "ct").value && $("auto").checked) convert(lastSrc);
+  }
+  function cdnFail() {
+    status("ct", "bad", "CryptoJS 로드 실패 — 네트워크 연결을 확인하세요");
+    $("doEnc").disabled = $("doDec").disabled = true;
+  }
+  if (window.CryptoJS) {
+    boot();
+  } else {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/crypto-js@4.2.0/crypto-js.min.js";
+    s.onload = () => (window.CryptoJS ? boot() : cdnFail());
+    s.onerror = cdnFail;
+    document.head.appendChild(s);
+  }
+})();
+</script>
+</body>
+</html>
