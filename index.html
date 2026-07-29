@@ -933,13 +933,18 @@
           try { const buf = await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream(fmt))).arrayBuffer(); enq(new Uint8Array(buf), true, st.recipe.concat(fmt + " 해제")); } catch (e) {}
         }
         const pr = printableRatio(u);
-        if (pr > 0.85) enq(new TextDecoder("utf-8", { fatal: false }).decode(u), false, st.recipe.slice());
-        // 단일바이트 XOR 브루트포스 — 직독이 영어스럽지 않으면 시도(출력가능 여부 무관)
+        const straightText = pr > 0.85 ? new TextDecoder("utf-8", { fatal: false }).decode(u) : null;
+        if (straightText != null) enq(straightText, false, st.recipe.slice());
+        // 단일바이트 XOR 브루트포스 — 직독이 또 다른 인코딩(base64/hex)이면 XOR 대상 아님
         if (opts.xor && st.recipe.length && u.length <= 8192 && !st.recipe.some((x) => x.indexOf("XOR") === 0)) {
-          const straightEs = pr > 0.85 ? englishScore(new TextDecoder("utf-8", { fatal: false }).decode(u)) : -1;
-          let best = null;
-          for (let k = 1; k < 256; k++) { const x = xorBytes(u, [k]); if (printableRatio(x) > 0.9) { const t = new TextDecoder("utf-8", { fatal: false }).decode(x); const es = englishScore(t); if (!best || es > best.es) best = { k: k, t: t, es: es }; } }
-          if (best && best.es > 20 && best.es > straightEs + 8) results.push({ recipe: st.recipe.concat("XOR 0x" + best.k.toString(16).padStart(2, "0")), text: best.t, score: scoreAll(best.t) + 6 });
+          const sns = straightText ? straightText.trim().replace(/\s+/g, "") : "";
+          const straightEncoded = !!(straightText && ((/^[A-Za-z0-9+/]+={0,2}$/.test(sns) && sns.length % 4 === 0 && sns.length >= 8) || (looksHex(sns) && sns.length >= 8)));
+          if (!straightEncoded) {
+            const straightEs = straightText != null ? englishScore(straightText) : -1;
+            let best = null;
+            for (let k = 1; k < 256; k++) { const x = xorBytes(u, [k]); if (printableRatio(x) > 0.9) { const t = new TextDecoder("utf-8", { fatal: false }).decode(x); const es = englishScore(t); if (!best || es > best.es) best = { k: k, t: t, es: es }; } }
+            if (best && best.es > 20 && best.es > straightEs + 10) results.push({ recipe: st.recipe.concat("XOR 0x" + best.k.toString(16).padStart(2, "0")), text: best.t, score: scoreAll(best.t) + 4 });
+          }
         }
         if (pr <= 0.85 && st.recipe.length) { const magic = identifyMagic(u); if (magic) results.push({ recipe: st.recipe, text: "[" + magic + "]  " + hexPrefix(u, 16) + " …", score: 55, binary: true }); }
       }
@@ -962,14 +967,26 @@
     if (seq !== anaSeq) return;
     renderFinal();
     // 암호문/해시 + 사전 로드됨 → 자동으로 대입/크랙까지
-    if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && (looksCipher($("ct").value) || isHashInput($("ct").value))) scheduleDict();
+    if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && (looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value))) scheduleDict();
   }
   function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase", rc4: "RC4", des: "DES", "3des": "Triple DES" }; return m[$("scheme").value] || "복호화"; }
   function pretty(o) { try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); } }
+  function addCrackPrompt(box, msg) {
+    box.appendChild(el("div", "magic-sub", msg || "원문은 복원 불가 — .txt 사전을 올리면 자동으로 대입/크랙합니다."));
+    const act = el("div", "magic-actions");
+    const b = el("button", "btn primary", wordlistText ? "지금 사전 크랙" : "사전 파일 선택 → 자동 크랙"); b.type = "button";
+    b.onclick = () => { $("dictBox").open = true; if (wordlistText) runDict(false); else $("wordlist").click(); };
+    act.appendChild(b); box.appendChild(act);
+  }
   function renderTokenFinal(box, c) {
     const d = c.token.decoded;
-    box.classList.remove("hidden"); box.classList.add("ok");
-    box.appendChild(el("div", "magic-t", c.token.icon + " " + c.label + " — 디코드된 내용 (서명 검증 안 함)"));
+    box.classList.remove("hidden"); box.classList.add(/암호문|바이너리/.test(c.label) ? "hint" : "ok");
+    box.appendChild(el("div", "magic-t", c.token.icon + " " + c.label + (d ? " — 디코드된 내용 (서명 검증 안 함)" : "")));
+    if (!d) {
+      if (c.token.subtitle) box.appendChild(el("div", "magic-sub", c.token.subtitle));
+      if (/해시|bcrypt|argon2/.test(c.label)) addCrackPrompt(box);
+      return;
+    }
     if (d.header) { box.appendChild(el("div", "magic-sub", "HEADER")); box.appendChild(el("div", "magic-out", pretty(d.header))); }
     if (d.payload) {
       const p = el("div", "magic-sub"); p.textContent = "PAYLOAD"; p.style.marginTop = "12px"; box.appendChild(p);
@@ -1006,9 +1023,9 @@
       finalActions(box, aesPlain, false);
       return;
     }
-    // 1.5) 토큰(JWT/JWE 등) — 디코드된 내용 표시
+    // 1.5) 토큰(JWT/JWE/UUID/시크릿/해시 등) — 디코드 또는 판정 표시
     const topTok = lastCands && lastCands[0];
-    if (topTok && topTok.token && topTok.token.decoded) { renderTokenFinal(box, topTok); return; }
+    if (topTok && topTok.token) { renderTokenFinal(box, topTok); return; }
     // 2) 자동 해독 — 여러 디코드 조합을 시도한 평문 후보들
     if (lastSolve && lastSolve.length) {
       const best = lastSolve[0];
@@ -1033,17 +1050,20 @@
       }
       return;
     }
-    // 3) 암호문인데 키가 없음 → 평문까지 가도록 키 입력 유도
+    // 3) 암호문/해시인데 키·비밀번호가 없음 → 키 입력 또는 사전 크랙 유도
     const top = lastCands && lastCands[0];
-    const isCipher = top && top.info && (/암호문|바이너리/.test(top.info.catLabel) || top.info.align);
+    const hx = hashByLen(ct);
+    const isCipher = (top && top.info && (/암호문|바이너리/.test(top.info.catLabel) || top.info.align)) || !!hx;
     if (isCipher && !$("key").value.trim()) {
       box.classList.add("hint");
-      box.appendChild(el("div", "magic-t", "🔒 암호문으로 보입니다 — 평문을 보려면 키가 필요합니다"));
-      box.appendChild(el("div", "magic-sub", "방식·키·IV를 입력하면 복호화된 평문이 여기 바로 표시됩니다. 비밀번호를 모르면 아래 ‘사전 공격’을 쓰세요."));
+      box.appendChild(el("div", "magic-t", "🔒 " + (hx ? (hx.name + " 해시 또는 암호문으로 보입니다") : "암호문으로 보입니다 — 평문을 보려면 키가 필요합니다")));
+      box.appendChild(el("div", "magic-sub", hx ? "가능성 A) 해시 → .txt 사전으로 크랙 · 가능성 B) 대칭암호 → 키 입력" : "방식·키·IV를 입력하면 복호화된 평문이 여기 바로 표시됩니다. 비밀번호를 모르면 사전 크랙을 쓰세요."));
       const act = el("div", "magic-actions");
-      const b = el("button", "btn primary", "🔑 키 입력하고 복호화"); b.type = "button";
-      b.onclick = () => { $("aesBox").open = true; $("aesBox").scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => $("key").focus(), 300); };
-      act.appendChild(b);
+      const bk = el("button", "btn ghost", "🔑 키 입력"); bk.type = "button";
+      bk.onclick = () => { $("aesBox").open = true; $("aesBox").scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => $("key").focus(), 300); };
+      const bd = el("button", "btn primary", wordlistText ? "사전 크랙 실행" : "사전 파일 선택 → 자동 크랙"); bd.type = "button";
+      bd.onclick = () => { $("dictBox").open = true; if (wordlistText) runDict(false); else $("wordlist").click(); };
+      act.appendChild(bk); act.appendChild(bd);
       box.appendChild(act);
       return;
     }
@@ -1069,6 +1089,27 @@
     try { const u = b64ToU8(s.replace(/\s+/g, "")); return !!(u && u.length >= 16 && [0x53,0x61,0x6c,0x74,0x65,0x64,0x5f,0x5f].every((b, i) => u[i] === b)); } catch (e) { return false; }
   }
   function isHashInput(s) { s = (s || "").trim(); return /^\$2[aby]\$\d{2}\$/.test(s) ? "bcrypt" : /^\$argon2(id|i|d)\$/.test(s) ? "argon2" : null; }
+  function hashByLen(s) {
+    s = (s || "").trim();
+    if (!/^[0-9a-fA-F]+$/.test(s)) return null;
+    const map = { 32: ["MD5", CryptoJS.MD5], 40: ["SHA-1", CryptoJS.SHA1], 56: ["SHA-224", CryptoJS.SHA224], 64: ["SHA-256", CryptoJS.SHA256], 96: ["SHA-384", CryptoJS.SHA384], 128: ["SHA-512", CryptoJS.SHA512] };
+    return map[s.length] ? { name: map[s.length][0], fn: map[s.length][1] } : null;
+  }
+  async function runHexCrack(hashHex, words, h, my) {
+    $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
+    const target = hashHex.toLowerCase(), t0 = performance.now();
+    let found = null;
+    for (let i = 0; i < words.length; i++) {
+      if (my !== dictSeq) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; }
+      let hv = ""; try { hv = h.fn(words[i]).toString(); } catch (e) {}
+      if (hv === target) { found = words[i]; break; }
+      if ((i & 1023) === 0) { dstat("idle", "🔓 " + h.name + " 크랙 " + i.toLocaleString() + " / " + words.length.toLocaleString() + " …"); await new Promise((r) => setTimeout(r, 0)); }
+    }
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    $("dictRun").disabled = false; $("dictStop").classList.add("hidden");
+    if (found) dstat("ok", "✓ " + h.name + " 크랙 성공: \"" + found + "\" · " + words.length.toLocaleString() + "개 중 " + secs + "s");
+    else dstat("bad", "✕ " + h.name + " — 사전 " + words.length.toLocaleString() + "개에서 못 찾음 · " + secs + "s");
+  }
   let hwP = null;
   function loadHashwasm() {
     if (hwP) return hwP;
@@ -1118,6 +1159,9 @@
     // bcrypt/argon2 해시 → hash-wasm 크랙
     const ht = isHashInput(ct);
     if (ht) { return runHashCrack(ct, words, ht, ++dictSeq); }
+    // 원시 MD5/SHA hex 해시 → 각 단어를 해싱해 비교
+    const hx = hashByLen(ct);
+    if (hx) { return runHexCrack(ct, words, hx, ++dictSeq); }
 
     const mode = $("dictMode").value, opensslLike = looksOpenSSL(ct);
     const doPass = mode === "pass" || (mode === "auto" && opensslLike);
