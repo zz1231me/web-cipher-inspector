@@ -424,6 +424,7 @@
           <button class="btn ghost" id="dictRun" type="button">지금 시도</button>
           <button class="btn ghost hidden" id="dictStop" type="button">중지</button>
         </div>
+        <label class="chk" style="margin-top:8px;"><input type="checkbox" id="optMangle" /> 규칙 변형 (뒤 숫자·대문자·리트·역순 자동 조합)</label>
         <div class="pstatus idle" id="dictStatus">.txt 단어목록을 올리면 자동 시도합니다. <b>Passphrase</b>=OpenSSL/CryptoJS 비밀번호, <b>AES 키</b>=각 단어를 위 ‘방식·IV·키 형식’ 설정의 키로 대입.</div>
       </div>
     </details>
@@ -1976,17 +1977,61 @@
     return map[s.length] ? { name: map[s.length][0], fn: map[s.length][1] } : null;
   }
   // 해시 문자열 → 시도할 알고리즘 목록
+  // 사전 규칙 변형 (hashcat best64 축소판) — 토글 ON일 때만 단어목록 확장
+  function mangleWords(words) {
+    if (!$("optMangle") || !$("optMangle").checked) return words;
+    const suffixes = ["", "1", "2", "3", "12", "123", "1234", "12345", "!", "!!", "?", "@", "#", "$", "01", "007", "69", "420", "2023", "2024", "2025", "00", "99", "111", "000"];
+    const leet = (s) => s.replace(/a/gi, "@").replace(/e/gi, "3").replace(/i/gi, "1").replace(/o/gi, "0").replace(/s/gi, "$");
+    const seen = new Set(), out = [], CAP = 3000000;
+    const add = (x) => { if (x && !seen.has(x)) { seen.add(x); out.push(x); } };
+    for (const w0 of words) {
+      if (out.length >= CAP) break;
+      const cap = w0.charAt(0).toUpperCase() + w0.slice(1);
+      const bases = [w0, w0.toLowerCase(), w0.toUpperCase(), cap, w0.split("").reverse().join(""), leet(w0)];
+      for (const b of bases) { for (const suf of suffixes) add(b + suf); add("1" + b); add("!" + b); }
+    }
+    return out;
+  }
   function hexHashAlgos(hash) {
     const h = hash.trim();
     if (/^\*[0-9A-Fa-f]{40}$/.test(h)) return [{ name: "MySQL4.1", fn: (w) => ("*" + CryptoJS.SHA1(CryptoJS.SHA1(w)).toString()).toUpperCase() }];
     const s = h.toLowerCase(); if (!/^[0-9a-f]+$/.test(s)) return null;
     const L = s.length, list = [];
-    if (L === 32) { list.push({ name: "MD5", fn: (w) => CryptoJS.MD5(w).toString() }); list.push({ name: "NTLM", ntlm: true }); }
-    else if (L === 40) { list.push({ name: "SHA-1", fn: (w) => CryptoJS.SHA1(w).toString() }); list.push({ name: "MySQL4.1(hex)", fn: (w) => CryptoJS.SHA1(CryptoJS.SHA1(w)).toString() }); }
-    else if (L === 56) list.push({ name: "SHA-224", fn: (w) => CryptoJS.SHA224(w).toString() });
-    else if (L === 64) list.push({ name: "SHA-256", fn: (w) => CryptoJS.SHA256(w).toString() });
-    else if (L === 96) list.push({ name: "SHA-384", fn: (w) => CryptoJS.SHA384(w).toString() });
-    else if (L === 128) list.push({ name: "SHA-512", fn: (w) => CryptoJS.SHA512(w).toString() });
+    // 순수 CryptoJS(빠름) 먼저, 그 뒤 hash-wasm(SHA-3/Keccak/RIPEMD/Whirlpool/BLAKE2) — 길이로 후보 선별
+    if (L === 32) {
+      list.push({ name: "MD5", fn: (w) => CryptoJS.MD5(w).toString() });
+      list.push({ name: "NTLM", ntlm: true });
+      list.push({ name: "MD4", hw: (h, w) => h.md4(w) });
+      list.push({ name: "double-MD5", fn: (w) => CryptoJS.MD5(CryptoJS.MD5(w).toString()).toString() });
+      list.push({ name: "md5(md5·raw)", fn: (w) => CryptoJS.MD5(CryptoJS.MD5(w)).toString() });
+      list.push({ name: "RIPEMD-128", hw: (h, w) => h.ripemd128 ? h.ripemd128(w) : Promise.reject() });
+    } else if (L === 40) {
+      list.push({ name: "SHA-1", fn: (w) => CryptoJS.SHA1(w).toString() });
+      list.push({ name: "RIPEMD-160", hw: (h, w) => h.ripemd160(w) });
+      list.push({ name: "sha1(sha1)", fn: (w) => CryptoJS.SHA1(CryptoJS.SHA1(w).toString()).toString() });
+      list.push({ name: "MySQL4.1(hex)", fn: (w) => CryptoJS.SHA1(CryptoJS.SHA1(w)).toString() });
+    } else if (L === 56) {
+      list.push({ name: "SHA-224", fn: (w) => CryptoJS.SHA224(w).toString() });
+      list.push({ name: "SHA3-224", hw: (h, w) => h.sha3(w, 224) });
+      list.push({ name: "Keccak-224", hw: (h, w) => h.keccak(w, 224) });
+    } else if (L === 64) {
+      list.push({ name: "SHA-256", fn: (w) => CryptoJS.SHA256(w).toString() });
+      list.push({ name: "SHA3-256", hw: (h, w) => h.sha3(w, 256) });
+      list.push({ name: "Keccak-256", hw: (h, w) => h.keccak(w, 256) });
+      list.push({ name: "BLAKE2s-256", hw: (h, w) => h.blake2s(w, 256) });
+      list.push({ name: "RIPEMD-256", hw: (h, w) => h.ripemd256 ? h.ripemd256(w) : Promise.reject() });
+      list.push({ name: "sha256(sha256)", fn: (w) => CryptoJS.SHA256(CryptoJS.SHA256(w).toString()).toString() });
+    } else if (L === 96) {
+      list.push({ name: "SHA-384", fn: (w) => CryptoJS.SHA384(w).toString() });
+      list.push({ name: "SHA3-384", hw: (h, w) => h.sha3(w, 384) });
+      list.push({ name: "Keccak-384", hw: (h, w) => h.keccak(w, 384) });
+    } else if (L === 128) {
+      list.push({ name: "SHA-512", fn: (w) => CryptoJS.SHA512(w).toString() });
+      list.push({ name: "SHA3-512", hw: (h, w) => h.sha3(w, 512) });
+      list.push({ name: "Keccak-512", hw: (h, w) => h.keccak(w, 512) });
+      list.push({ name: "Whirlpool", hw: (h, w) => h.whirlpool(w) });
+      list.push({ name: "BLAKE2b-512", hw: (h, w) => h.blake2b(w, 512) });
+    }
     return list.length ? list : null;
   }
   async function ntlmHash(hw, w) {
@@ -1994,21 +2039,25 @@
     for (let i = 0; i < w.length; i++) { const c = w.charCodeAt(i); u[i * 2] = c & 0xff; u[i * 2 + 1] = (c >> 8) & 0xff; }
     return await hw.md4(u);
   }
-  async function runHexCrack(hashHex, words, my) {
+  async function runHexCrack(hashHex, rawWords, my) {
     const algos = hexHashAlgos(hashHex);
     if (!algos) { dstat("bad", "해시 형식 인식 실패"); return; }
+    const words = mangleWords(rawWords);
     $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
     const target = hashHex.trim(), targetLc = target.toLowerCase(), t0 = performance.now();
+    const needHw = algos.some((a) => a.ntlm || a.hw);
+    let hw = null;
+    if (needHw) { try { dstat("idle", "hash-wasm 로딩 (SHA-3/Keccak/RIPEMD/Whirlpool/BLAKE2)…"); hw = await loadHashwasm(); } catch (e) { hw = null; } if (my !== dictSeq) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; } }
     let found = null;
     for (const alg of algos) {
       if (found) break;
-      let hw = null;
-      if (alg.ntlm) { try { dstat("idle", "🔓 NTLM 준비 (hash-wasm md4)…"); hw = await loadHashwasm(); } catch (e) { continue; } if (my !== dictSeq) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; } }
+      if ((alg.ntlm || alg.hw) && !hw) continue;
+      const async = !!(alg.ntlm || alg.hw);
       for (let i = 0; i < words.length; i++) {
         if (my !== dictSeq) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; }
-        let hv = ""; try { hv = alg.ntlm ? await ntlmHash(hw, words[i]) : alg.fn(words[i]); } catch (e) {}
+        let hv = ""; try { hv = alg.ntlm ? await ntlmHash(hw, words[i]) : alg.hw ? await alg.hw(hw, words[i]) : alg.fn(words[i]); } catch (e) {}
         if (hv && (hv.toLowerCase() === targetLc)) { found = { w: words[i], algo: alg.name }; break; }
-        if ((i & (alg.ntlm ? 127 : 1023)) === 0) { dstat("idle", "🔓 " + alg.name + " 크랙 " + i.toLocaleString() + " / " + words.length.toLocaleString() + " …"); await new Promise((r) => setTimeout(r, 0)); }
+        if ((i & (async ? 127 : 1023)) === 0) { dstat("idle", "🔓 " + alg.name + " 크랙 " + i.toLocaleString() + " / " + words.length.toLocaleString() + " …"); await new Promise((r) => setTimeout(r, 0)); }
       }
     }
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
@@ -2026,6 +2075,7 @@
   function loadJsrsasign() { if (!jsrsaP) jsrsaP = window.KJUR ? Promise.resolve() : loadScript("https://cdn.jsdelivr.net/npm/jsrsasign@11.1.0/lib/jsrsasign-all-min.js"); return jsrsaP; }
   function loadForge() { if (!forgeP) forgeP = window.forge ? Promise.resolve() : loadScript("https://cdn.jsdelivr.net/npm/node-forge@1.3.1/dist/forge.min.js"); return forgeP; }
   async function runHashCrack(hash, words, type, my) {
+    words = mangleWords(words);
     $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
     let hw;
     try { dstat("idle", "hash-wasm 로딩…"); hw = await loadHashwasm(); } catch (e) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); dstat("bad", "hash-wasm 로드 실패 (네트워크 확인)"); return; }
@@ -2045,6 +2095,7 @@
   }
   function isJwtHS(s) { const p = (s || "").trim().split("."); if (p.length !== 3 || !p[0]) return null; try { const h = JSON.parse(new TextDecoder().decode(b64ToU8(p[0]))); return /^HS(256|384|512)$/.test(h.alg || "") ? h.alg : null; } catch (e) { return null; } }
   async function runJwtCrack(jwt, words, alg, my) {
+    words = mangleWords(words);
     $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
     const parts = jwt.trim().split("."), si = parts[0] + "." + parts[1], sig = parts[2];
     const hf = alg === "HS384" ? CryptoJS.HmacSHA384 : alg === "HS512" ? CryptoJS.HmacSHA512 : CryptoJS.HmacSHA256;
@@ -2089,12 +2140,13 @@
     const doPass = mode === "pass" || (mode === "auto" && opensslLike);
     const doKey = mode === "key" || (mode === "auto" && !opensslLike);
     const origKey = $("key").value, origScheme = $("scheme").value;
-    const total = words.length, my = ++dictSeq, t0 = performance.now();
+    const mwords = mangleWords(words);
+    const total = mwords.length, my = ++dictSeq, t0 = performance.now();
     $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
     let found = null;
     for (let i = 0; i < total; i++) {
       if (my !== dictSeq) { $("key").value = origKey; $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; }
-      const w = words[i];
+      const w = mwords[i];
       let t = null, via = "";
       if (doPass) { t = tryPass(ct, w); if (t) via = "passphrase"; }
       if (!t && doKey) { t = await tryKey(ct, w); if (t) via = "key"; }
