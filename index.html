@@ -35,6 +35,26 @@
   /* Card */
   .card { background:var(--card); border:1px solid var(--line-2); border-radius:20px; padding:28px;
     box-shadow:0 1px 1px rgba(0,0,0,.03), 0 14px 34px -14px rgba(0,0,0,.13); }
+  .wrap > .card, .wrap > details.card { margin-bottom:16px; }
+
+  /* Primary input */
+  .input-head { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
+  .input-title { font-size:16px; font-weight:600; color:var(--ink); margin-right:auto; letter-spacing:-.015em; }
+  .input-head .mini { margin-left:0; }
+  textarea.ct-main { min-height:136px; font-size:14px; }
+
+  /* Collapsible section cards */
+  details.details { padding:0; }
+  .details-sum { list-style:none; cursor:pointer; display:flex; align-items:baseline; gap:10px; padding:19px 22px; user-select:none; flex-wrap:wrap; }
+  .details-sum::-webkit-details-marker { display:none; }
+  .details-sum::after { content:"⌄"; margin-left:auto; align-self:center; color:var(--ink3); font-size:17px; line-height:1; transition:transform .2s; }
+  details[open] > .details-sum::after { transform:rotate(180deg); }
+  .details-sum:hover .sum-title { color:var(--accent); }
+  .sum-title { font-size:15px; font-weight:600; color:var(--ink); letter-spacing:-.01em; }
+  .sum-hint { font-size:12px; color:var(--ink3); }
+  .details-body { padding:2px 22px 22px; }
+  .details-body .toolbar { margin-top:18px; }
+  .details-body .pane { margin-top:18px; }
 
   label, .lbl { display:block; font-size:12.5px; font-weight:590; color:var(--ink2); margin:0 0 8px 2px; letter-spacing:-.005em; }
 
@@ -173,128 +193,138 @@
     </header>
 
     <div class="card">
-      <div class="cols-2">
-        <div class="field">
-          <label for="scheme">방식</label>
-          <select id="scheme">
-            <option value="cbc">AES-CBC (key + IV)</option>
-            <option value="gcm">AES-GCM (key + nonce + 태그)</option>
-            <option value="ctr">AES-CTR (key + IV)</option>
-            <option value="ecb">AES-ECB (key)</option>
-            <option value="pass">Passphrase (CryptoJS / OpenSSL)</option>
-          </select>
-        </div>
-        <div class="field" id="padWrap">
-          <label for="padding">패딩</label>
-          <select id="padding">
-            <option value="Pkcs7">Pkcs7 (기본)</option>
-            <option value="NoPadding">NoPadding</option>
-            <option value="ZeroPadding">ZeroPadding</option>
-            <option value="Iso97971">Iso97971</option>
-          </select>
-        </div>
+      <div class="input-head">
+        <span class="input-title">🔎 데이터 · 암호문 붙여넣기</span>
+        <select id="ctFmt" class="mini">
+          <option value="Auto" id="autoOpt">자동감지</option>
+          <option value="Base64">Base64</option>
+          <option value="Hex">Hex</option>
+        </select>
+        <button class="chip" id="exBtn" type="button">예시</button>
+        <button class="chip" id="copyCt" type="button">복사</button>
+        <button class="chip" id="clrCt" type="button">지우기</button>
       </div>
-
-      <div class="field" id="setKey">
-        <label id="keyLabel" for="key">키 / 비밀번호</label>
-        <div class="input-group">
-          <input id="key" type="text" placeholder="JS 소스에서 찾은 키 입력" autocomplete="off" spellcheck="false" />
-          <select id="keyFmt" class="suffix">
-            <option value="Utf8">UTF-8</option>
-            <option value="Hex">Hex</option>
-            <option value="Base64">Base64</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="field" id="ivField">
-        <label for="iv">IV / Nonce</label>
-        <div class="input-group">
-          <input id="iv" type="text" placeholder="초기화 벡터 (CBC·CTR 16B, GCM 12B)" autocomplete="off" spellcheck="false" />
-          <select id="ivFmt" class="suffix">
-            <option value="Hex">Hex</option>
-            <option value="Utf8">UTF-8</option>
-            <option value="Base64">Base64</option>
-          </select>
-        </div>
-        <div class="opts">
-          <label class="check"><input type="checkbox" id="ivPrepend" /><span>IV가 암호문 앞에 포함</span></label>
-          <button class="link" id="genIv" type="button">무작위 IV 생성</button>
-        </div>
-      </div>
-
-      <div class="field hidden" id="tagField">
-        <label for="tag">인증 태그 (GCM · 비우면 암호문 끝에 포함으로 간주)</label>
-        <div class="input-group">
-          <input id="tag" type="text" placeholder="GCM auth tag (보통 16B)" autocomplete="off" spellcheck="false" />
-          <select id="tagFmt" class="suffix">
-            <option value="Hex">Hex</option>
-            <option value="Base64">Base64</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="field hidden" id="aadField">
-        <label for="aad">추가 인증 데이터 AAD (GCM · 선택)</label>
-        <div class="input-group">
-          <input id="aad" type="text" placeholder="associated data (없으면 비워두기)" autocomplete="off" spellcheck="false" />
-          <select id="aadFmt" class="suffix">
-            <option value="Utf8">UTF-8</option>
-            <option value="Hex">Hex</option>
-            <option value="Base64">Base64</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="field" id="dictField">
-        <label for="wordlist">사전 공격 · Passphrase 무차별 대입 (.txt 단어목록)</label>
-        <div class="dict-row">
-          <input type="file" id="wordlist" accept=".txt,text/plain" />
-          <button class="btn ghost" id="dictRun" type="button">사전 공격 실행</button>
-        </div>
-        <div class="pstatus idle" id="dictStatus"></div>
-      </div>
-
-      <div class="hint" id="hint"></div>
-
-      <div class="divider"></div>
-
-      <div class="toolbar">
-        <label class="switch"><input type="checkbox" id="auto" checked /><span>자동 변환</span></label>
-        <div class="toolbar-actions">
-          <button class="btn ghost" id="doDec" type="button">복호화 ↑</button>
-          <button class="btn primary" id="doEnc" type="button">암호화 ↓</button>
-        </div>
-      </div>
-
-      <div class="convert">
-        <div class="pane">
-          <div class="pane-head">
-            <span class="pane-title">평문</span>
-            <button class="chip" id="copyPt" type="button">복사</button>
-          </div>
-          <textarea id="pt" placeholder="평문을 입력하면 자동으로 암호화됩니다 (JSON 등)"></textarea>
-          <div class="pstatus idle" id="ptStatus"></div>
-        </div>
-
-        <div class="pane">
-          <div class="pane-head">
-            <span class="pane-title">암호문</span>
-            <select id="ctFmt" class="mini">
-              <option value="Auto" id="autoOpt">자동감지</option>
-              <option value="Base64">Base64</option>
-              <option value="Hex">Hex</option>
-            </select>
-            <button class="chip" id="copyCt" type="button">복사</button>
-          </div>
-          <textarea id="ct" placeholder="암호문을 붙여넣으면 자동으로 복호화됩니다"></textarea>
-          <div class="pstatus idle" id="ctStatus"></div>
-        </div>
-      </div>
+      <textarea id="ct" class="ct-main" placeholder="여기에 붙여넣으면 무엇인지 자동 분석하고, 인코딩(Base64·Hex·URL·gzip 등)은 자동으로 풀어서 보여줍니다. 키가 없어도 됩니다."></textarea>
+      <div class="pstatus idle" id="ctStatus"></div>
 
       <div class="magic hidden" id="magicOut"></div>
       <div class="analysis hidden" id="analysis"></div>
     </div>
+
+    <details class="card details" id="aesBox">
+      <summary class="details-sum">
+        <span class="sum-title">🔑 키로 직접 복호화 · 재암호화</span>
+        <span class="sum-hint">AES-CBC/GCM/CTR/ECB · Passphrase — 키를 알 때</span>
+      </summary>
+      <div class="details-body">
+        <div class="cols-2">
+          <div class="field">
+            <label for="scheme">방식</label>
+            <select id="scheme">
+              <option value="cbc">AES-CBC (key + IV)</option>
+              <option value="gcm">AES-GCM (key + nonce + 태그)</option>
+              <option value="ctr">AES-CTR (key + IV)</option>
+              <option value="ecb">AES-ECB (key)</option>
+              <option value="pass">Passphrase (CryptoJS / OpenSSL)</option>
+            </select>
+          </div>
+          <div class="field" id="padWrap">
+            <label for="padding">패딩</label>
+            <select id="padding">
+              <option value="Pkcs7">Pkcs7 (기본)</option>
+              <option value="NoPadding">NoPadding</option>
+              <option value="ZeroPadding">ZeroPadding</option>
+              <option value="Iso97971">Iso97971</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field" id="setKey">
+          <label id="keyLabel" for="key">키 / 비밀번호</label>
+          <div class="input-group">
+            <input id="key" type="text" placeholder="JS 소스에서 찾은 키 입력" autocomplete="off" spellcheck="false" />
+            <select id="keyFmt" class="suffix">
+              <option value="Utf8">UTF-8</option>
+              <option value="Hex">Hex</option>
+              <option value="Base64">Base64</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field" id="ivField">
+          <label for="iv">IV / Nonce</label>
+          <div class="input-group">
+            <input id="iv" type="text" placeholder="초기화 벡터 (CBC·CTR 16B, GCM 12B)" autocomplete="off" spellcheck="false" />
+            <select id="ivFmt" class="suffix">
+              <option value="Hex">Hex</option>
+              <option value="Utf8">UTF-8</option>
+              <option value="Base64">Base64</option>
+            </select>
+          </div>
+          <div class="opts">
+            <label class="check"><input type="checkbox" id="ivPrepend" /><span>IV가 암호문 앞에 포함</span></label>
+            <button class="link" id="genIv" type="button">무작위 IV 생성</button>
+          </div>
+        </div>
+
+        <div class="field hidden" id="tagField">
+          <label for="tag">인증 태그 (GCM · 비우면 암호문 끝에 포함으로 간주)</label>
+          <div class="input-group">
+            <input id="tag" type="text" placeholder="GCM auth tag (보통 16B)" autocomplete="off" spellcheck="false" />
+            <select id="tagFmt" class="suffix">
+              <option value="Hex">Hex</option>
+              <option value="Base64">Base64</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="field hidden" id="aadField">
+          <label for="aad">추가 인증 데이터 AAD (GCM · 선택)</label>
+          <div class="input-group">
+            <input id="aad" type="text" placeholder="associated data (없으면 비워두기)" autocomplete="off" spellcheck="false" />
+            <select id="aadFmt" class="suffix">
+              <option value="Utf8">UTF-8</option>
+              <option value="Hex">Hex</option>
+              <option value="Base64">Base64</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="hint" id="hint"></div>
+
+        <div class="toolbar">
+          <label class="switch"><input type="checkbox" id="auto" checked /><span>자동 변환</span></label>
+          <div class="toolbar-actions">
+            <button class="btn ghost" id="doDec" type="button">복호화 ↑</button>
+            <button class="btn primary" id="doEnc" type="button">암호화 ↓</button>
+          </div>
+        </div>
+
+        <div class="pane">
+          <div class="pane-head">
+            <span class="pane-title">평문 · 복호화 결과</span>
+            <button class="chip" id="copyPt" type="button">복사</button>
+          </div>
+          <textarea id="pt" placeholder="복호화하면 결과가 여기에 표시됩니다. 직접 수정하면 위 암호문으로 자동 재암호화됩니다."></textarea>
+          <div class="pstatus idle" id="ptStatus"></div>
+        </div>
+      </div>
+    </details>
+
+    <details class="card details" id="dictBox">
+      <summary class="details-sum">
+        <span class="sum-title">📚 사전 공격 (Passphrase)</span>
+        <span class="sum-hint">.txt 단어목록을 올리면 자동으로 복호화 시도</span>
+      </summary>
+      <div class="details-body">
+        <div class="dict-row">
+          <input type="file" id="wordlist" accept=".txt,text/plain" />
+          <button class="btn ghost" id="dictRun" type="button">지금 시도</button>
+          <button class="btn ghost hidden" id="dictStop" type="button">중지</button>
+        </div>
+        <div class="pstatus idle" id="dictStatus">단어목록(.txt)을 올리면 위 암호문(OpenSSL/CryptoJS passphrase)에 대해 자동으로 시도합니다.</div>
+      </div>
+    </details>
 
     <p class="foot">
       대상 앱 JS에서 <b>aes · encrypt · key · iv · mode · tag</b> 를 검색해 파라미터를 입력하세요.<br>
@@ -809,7 +839,7 @@
   }
 
   /* ---------- 사전 공격 (Passphrase 무차별 대입) ---------- */
-  let wordlistText = null;
+  let wordlistText = null, dictSeq = 0, dictTimer = null;
   function dstat(cls, text) { const e = $("dictStatus"); e.className = "pstatus " + cls; e.textContent = text; }
   function tryPass(ct, word) {
     try {
@@ -820,26 +850,37 @@
     } catch (e) {}
     return null;
   }
-  async function runDict() {
+  // 입력이 OpenSSL/CryptoJS passphrase 블롭인지 (자동 시도 트리거용)
+  function looksOpenSSL(s) {
+    s = (s || "").trim();
+    if (/^U2FsdGVk/.test(s)) return true;
+    try { const u = b64ToU8(s.replace(/\s+/g, "")); return !!(u && u.length >= 16 && [0x53,0x61,0x6c,0x74,0x65,0x64,0x5f,0x5f].every((b, i) => u[i] === b)); } catch (e) { return false; }
+  }
+  function stopDict() { dictSeq++; $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); }
+  function scheduleDict() { clearTimeout(dictTimer); dictTimer = setTimeout(() => runDict(true), 400); }
+  async function runDict(auto) {
     if (!window.CryptoJS) return;
     const ct = $("ct").value.trim();
-    if (!ct) { dstat("bad", "먼저 암호문을 입력하세요"); return; }
-    if (!wordlistText) { dstat("bad", "먼저 .txt 사전 파일을 선택하세요"); return; }
+    if (!ct) { if (!auto) dstat("bad", "먼저 위에 암호문을 붙여넣으세요"); return; }
+    if (!wordlistText) { if (!auto) dstat("bad", "먼저 .txt 사전 파일을 선택하세요"); return; }
     const words = wordlistText.split(/\r?\n/).map((w) => w.replace(/\s+$/, "")).filter((w) => w.length);
     if (!words.length) { dstat("bad", "사전이 비어 있습니다"); return; }
-    $("dictRun").disabled = true;
+    const my = ++dictSeq;
+    $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
     let found = null;
     for (let i = 0; i < words.length; i++) {
+      if (my !== dictSeq) return; // 취소/재시작됨
       const t = tryPass(ct, words[i]);
       if (t) { found = { w: words[i], t: t }; break; }
-      if ((i & 511) === 0) { dstat("idle", i.toLocaleString() + " / " + words.length.toLocaleString() + " 시도 중…"); await new Promise((r) => setTimeout(r, 0)); }
+      if ((i & 255) === 0) { dstat("idle", "🔍 " + i.toLocaleString() + " / " + words.length.toLocaleString() + " 시도 중…"); await new Promise((r) => setTimeout(r, 0)); }
     }
-    $("dictRun").disabled = false;
+    if (my !== dictSeq) return;
+    $("dictRun").disabled = false; $("dictStop").classList.add("hidden");
     if (found) {
-      $("scheme").value = "pass"; syncFields();
+      $("scheme").value = "pass"; syncFields(); $("aesBox").open = true;
       $("key").value = found.w;
       lastSrc = "ct"; save(); convert("ct");
-      dstat("ok", "✓ 비밀번호 발견: \"" + found.w + "\"");
+      dstat("ok", "✓ 비밀번호 발견: \"" + found.w + "\" — 아래 ‘키로 직접 복호화’에 결과 표시됨");
     } else {
       dstat("bad", "✕ 사전 " + words.length.toLocaleString() + "개에서 찾지 못함 (OpenSSL/CryptoJS passphrase 기준)");
     }
@@ -953,6 +994,7 @@
     if (src === "pt") {
       const input = $("pt").value;
       if (!input) { setVal($("ct"), ""); status("ct", "idle", ""); status("pt", "idle", ""); return; }
+      if (!$("key").value.trim()) { status("pt", "idle", "🔑 키를 입력하면 자동 암호화됩니다"); return; }
       try {
         const r = await encrypt(scheme, input);
         setVal($("ct"), r.text);
@@ -965,6 +1007,7 @@
     } else {
       const input = $("ct").value.trim();
       if (!input) { setVal($("pt"), ""); status("pt", "idle", ""); status("ct", "idle", ""); return; }
+      if (!$("key").value.trim()) { setVal($("pt"), ""); status("ct", "idle", ""); status("pt", "idle", "🔑 키를 입력하면 여기서 복호화됩니다 (형식 분석은 아래 자동)"); return; }
       try {
         const r = await decrypt(scheme, input);
         setVal($("pt"), r.text);
@@ -1060,7 +1103,7 @@
     // 설정 변경 → 마지막 편집 쪽 기준 재변환
     ["scheme","padding","key","keyFmt","iv","ivFmt","ctFmt","tag","tagFmt","aad","aadFmt"].forEach((f) => {
       const el = $(f);
-      const h = () => { if (f === "scheme") syncFields(); liveCheck(); schedule(lastSrc); save(); };
+      const h = () => { if (f === "scheme") syncFields(); if (f === "key" && $("key").value.trim()) $("aesBox").open = true; liveCheck(); schedule(lastSrc); save(); };
       el.addEventListener("input", h);
       el.addEventListener("change", h);
     });
@@ -1074,15 +1117,24 @@
     };
 
     $("pt").addEventListener("input", () => { if (!suppress) schedule("pt"); });
-    $("ct").addEventListener("input", () => { if (suppress) return; analyzeNow(); schedule("ct"); });
+    $("ct").addEventListener("input", () => { if (suppress) return; analyzeNow(); schedule("ct"); if (wordlistText && looksOpenSSL($("ct").value)) scheduleDict(); });
+
+    $("exBtn").onclick = () => { $("ct").value = btoa('{"user":"admin","role":"guest","exp":1699999999}'); $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
+    $("clrCt").onclick = () => { $("ct").value = ""; $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
 
     $("wordlist").onchange = async (e) => {
       const f = e.target.files && e.target.files[0];
       if (!f) return;
-      try { wordlistText = await f.text(); const n = wordlistText.split(/\r?\n/).filter((w) => w.trim()).length; dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 로드됨"); }
-      catch (err) { dstat("bad", "파일을 읽지 못했습니다"); }
+      try {
+        wordlistText = await f.text();
+        const n = wordlistText.split(/\r?\n/).filter((w) => w.trim()).length;
+        $("dictBox").open = true;
+        if ($("ct").value.trim()) { dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 — 자동 시도 중…"); runDict(true); }
+        else dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 로드됨 — 위에 암호문을 넣으면 자동 시도합니다");
+      } catch (err) { dstat("bad", "파일을 읽지 못했습니다"); }
     };
-    $("dictRun").onclick = runDict;
+    $("dictRun").onclick = () => runDict(false);
+    $("dictStop").onclick = stopDict;
 
     $("doEnc").onclick = () => { lastSrc = "pt"; convert("pt"); };
     $("doDec").onclick = () => { lastSrc = "ct"; convert("ct"); };
@@ -1099,6 +1151,10 @@
       $("ivPrepend").checked = false;
       status("pt", "idle", ""); status("ct", "idle", "");
       renderAnalysis(null);
+      $("magicOut").classList.add("hidden"); $("magicOut").textContent = "";
+      wordlistText = null; try { $("wordlist").value = ""; } catch (e) {}
+      dstat("idle", "단어목록(.txt)을 올리면 위 암호문(OpenSSL/CryptoJS passphrase)에 대해 자동으로 시도합니다.");
+      $("aesBox").open = false;
       lastSrc = "ct";
       syncFields();
     };
@@ -1118,6 +1174,7 @@
     load();
     syncFields();
     analyzeNow();
+    if ($("key").value.trim()) $("aesBox").open = true;
     // 복원된 내용이 있으면 한 번 변환해 양쪽을 맞춰줌
     if ($(lastSrc === "pt" ? "pt" : "ct").value && $("auto").checked) convert(lastSrc);
   }
