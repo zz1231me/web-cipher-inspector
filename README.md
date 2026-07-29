@@ -23,11 +23,13 @@
 - **🔑 사전 공격** — `.txt` 단어목록을 올려 OpenSSL/CryptoJS passphrase 암호문을 무차별 대입 복호화. 발견 시 비밀번호와 평문을 자동 표시.
 - **양방향 라이브 변환** — 평문 ⇄ 암호문이 한 화면에. 한쪽에 입력·붙여넣기하면 반대쪽이 자동으로 채워집니다(자동 변환 토글 가능).
 - **지원 방식**
-  - AES-CBC (key + IV)
+  - AES-CBC / CTR / CFB / OFB / ECB (key + IV)
   - AES-GCM (key + nonce + 인증 태그 + AAD) — Web Crypto 기반
-  - AES-CTR (key + IV)
-  - AES-ECB (key)
-  - Passphrase (CryptoJS / OpenSSL `U2FsdGVk…` 형식)
+  - **ChaCha20-Poly1305** (key + nonce + 태그) — 순수 JS, RFC 8439 검증
+  - **Fernet** (base64url 32B 키 → AES-128-CBC + HMAC-SHA256 검증)
+  - Passphrase — OpenSSL `U2FsdGVk…`의 **MD5·SHA-256 EVP_BytesToKey** 및 **PBKDF2(SHA-256/1)** 를 AES-256/128로 자동 시도 (최신 `openssl enc` 파일 대응)
+  - **JWE 복호화** (dir·RSA-OAEP·RSA-OAEP-256·RSA1_5 × A128/256GCM·A128CBC-HS256·A256CBC-HS512)
+  - **키·인증서 파싱** — X.509, 암호화 PKCS#8, PKCS#12(.pfx)
 - **실전 편의 기능**
   - `IV‖암호문` 자동 분리/결합 (IV가 암호문 앞에 붙는 스킴 대응)
   - 입력 포맷 자동감지 (Hex / Base64)

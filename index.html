@@ -484,6 +484,25 @@
         </div>
 
         <div class="field">
+          <label for="jweRun">JWE 복호화 (위 입력이 5분할 JWE일 때)</label>
+          <div class="opts">
+            <button class="link" id="jweRun" type="button">JWE 복호화</button>
+            <span class="pstatus idle" style="margin:0;">RSA-* → 위 RSA 개인키 · dir → JWT 키 필드의 대칭키</span>
+          </div>
+          <div class="a-prev hidden" id="jweOut"></div>
+        </div>
+
+        <div class="field">
+          <label for="certIn">키·인증서 파싱 (X.509 / PKCS#8 / PKCS#12 .pfx)</label>
+          <textarea id="certIn" placeholder="-----BEGIN CERTIFICATE-----  또는  암호화 개인키 PEM  또는  PKCS#12(.pfx) base64" spellcheck="false" style="min-height:64px;"></textarea>
+          <div class="input-group" style="margin-top:8px;">
+            <input id="certPass" type="text" placeholder="PKCS#12/암호화 키 비밀번호 (없으면 비움)" autocomplete="off" spellcheck="false" />
+            <button class="btn ghost" id="certRun" type="button" style="flex:none;">파싱</button>
+          </div>
+          <div class="a-prev hidden" id="certOut"></div>
+        </div>
+
+        <div class="field">
           <label for="kpText">Known-plaintext 키/키스트림 복구 (스트림·XOR)</label>
           <input id="kpText" type="text" placeholder="알고 있는 평문 조각 (hex는 0x.. 접두)" autocomplete="off" spellcheck="false" />
           <div class="input-group" style="margin-top:8px;">
@@ -2314,6 +2333,93 @@
       o.textContent = "✓ " + used + "\n" + pt;
     } catch (e) { o.textContent = "실패: " + (e.message || e); }
   }
+  function b64uToU8(s) { return b64ToU8(pad64(String(s).trim().replace(/-/g, "+").replace(/_/g, "/"))); }
+  function jweSymKey() {
+    const v = $("jwtKey").value.trim();
+    // base64url → 바이트, 실패 시 UTF-8
+    try { const u = b64uToU8(v); if (u && (u.length === 16 || u.length === 24 || u.length === 32 || u.length === 64)) return u; } catch (e) {}
+    return new TextEncoder().encode(v);
+  }
+  async function jweDecrypt() {
+    const o = $("jweOut"); o.classList.remove("hidden"); o.textContent = "JWE 복호화 중…";
+    try {
+      const parts = $("ct").value.trim().replace(/\s+/g, "").split(".");
+      if (parts.length !== 5) throw new Error("JWE(5분할) 형식이 아닙니다");
+      const hdr = JSON.parse(new TextDecoder().decode(b64uToU8(parts[0])));
+      const alg = hdr.alg, enc = hdr.enc;
+      const ek = b64uToU8(parts[1]), iv = b64uToU8(parts[2]), ctB = b64uToU8(parts[3]), tag = b64uToU8(parts[4]);
+      let cek;
+      if (alg === "dir") { cek = jweSymKey(); }
+      else if (/^RSA/.test(alg)) {
+        await loadForge();
+        const pem = $("rsaKey").value.trim(); if (!/BEGIN/.test(pem)) throw new Error("RSA-* 는 위 RSA 개인키(PEM)가 필요합니다");
+        let pk = /ENCRYPTED/.test(pem) ? forge.pki.decryptRsaPrivateKey(pem, $("rsaPass").value) : forge.pki.privateKeyFromPem(pem);
+        if (!pk) throw new Error("개인키 로드 실패");
+        let bin = ""; for (let i = 0; i < ek.length; i++) bin += String.fromCharCode(ek[i]);
+        let dec;
+        if (alg === "RSA1_5") dec = pk.decrypt(bin, "RSAES-PKCS1-V1_5");
+        else dec = pk.decrypt(bin, "RSA-OAEP", alg === "RSA-OAEP-256" ? { md: forge.md.sha256.create(), mgf1: { md: forge.md.sha256.create() } } : undefined);
+        cek = Uint8Array.from(dec, (c) => c.charCodeAt(0));
+      } else throw new Error("지원하지 않는 alg: " + alg + " (dir·RSA-OAEP·RSA-OAEP-256·RSA1_5 지원)");
+      let pt;
+      if (/GCM$/.test(enc)) {
+        const k = await crypto.subtle.importKey("raw", cek, { name: "AES-GCM" }, false, ["decrypt"]);
+        const buf = await crypto.subtle.decrypt({ name: "AES-GCM", iv: iv, additionalData: new TextEncoder().encode(parts[0]), tagLength: 128 }, k, concatU8(ctB, tag));
+        pt = new Uint8Array(buf);
+      } else if (/CBC-HS/.test(enc)) {
+        const half = cek.length / 2, macKey = cek.slice(0, half), encKey = cek.slice(half);
+        // HMAC 검증: AAD || IV || CT || AL(비트수 64BE)
+        const aad = new TextEncoder().encode(parts[0]);
+        const al = new Uint8Array(8); { let bits = aad.length * 8; for (let i = 7; i >= 0; i--) { al[i] = bits & 0xff; bits = Math.floor(bits / 256); } }
+        const macIn = concatU8(concatU8(concatU8(aad, iv), ctB), al);
+        const hf = half === 16 ? CryptoJS.HmacSHA256 : half === 24 ? CryptoJS.HmacSHA384 : CryptoJS.HmacSHA512;
+        const full = waToU8(hf(u8ToWA(macIn), u8ToWA(macKey)));
+        let ok = true; for (let i = 0; i < half; i++) if (full[i] !== tag[i]) ok = false;
+        const out = CryptoJS.AES.decrypt({ ciphertext: u8ToWA(ctB) }, u8ToWA(encKey), { iv: u8ToWA(iv), mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 });
+        pt = waToU8(out); hdr._hmac = ok;
+      } else throw new Error("지원하지 않는 enc: " + enc);
+      const text = new TextDecoder("utf-8", { fatal: false }).decode(pt);
+      o.textContent = ""; o.appendChild(el("div", "solve-text", "✓ 복호화 · alg=" + alg + " · enc=" + enc + (hdr._hmac === false ? " · ⚠ HMAC 불일치" : /CBC-HS/.test(enc) ? " · HMAC 검증 성공" : " · 태그 검증 성공")));
+      const b = el("div", "magic-out"); b.textContent = text; o.appendChild(b);
+      trace("JWE 복호화 성공 → alg=" + alg + " enc=" + enc, "ok", "crack");
+    } catch (e) { o.textContent = "JWE 복호화 실패: " + (e.message || e); }
+  }
+  async function parseCertKey() {
+    const o = $("certOut"); o.classList.remove("hidden"); o.textContent = "파싱 중…";
+    const inp = $("certIn").value.trim(), pass = $("certPass").value;
+    if (!inp) { o.textContent = "PEM/base64를 붙여넣으세요."; return; }
+    try {
+      await loadForge(); const L = [];
+      if (/-----BEGIN CERTIFICATE-----/.test(inp)) {
+        const cert = forge.pki.certificateFromPem(inp);
+        L.push("📜 X.509 인증서");
+        L.push("Subject: " + cert.subject.attributes.map((a) => a.shortName + "=" + a.value).join(", "));
+        L.push("Issuer: " + cert.issuer.attributes.map((a) => a.shortName + "=" + a.value).join(", "));
+        L.push("유효기간: " + cert.validity.notBefore.toISOString().slice(0, 10) + " ~ " + cert.validity.notAfter.toISOString().slice(0, 10));
+        L.push("Serial: " + cert.serialNumber);
+        L.push("공개키: " + (cert.publicKey.n ? "RSA " + cert.publicKey.n.bitLength() + "bit" : "EC/기타"));
+        const san = cert.getExtension("subjectAltName"); if (san && san.altNames) L.push("SAN: " + san.altNames.map((a) => a.value).join(", "));
+      } else if (/-----BEGIN ENCRYPTED PRIVATE KEY-----/.test(inp) || (/-----BEGIN (RSA )?PRIVATE KEY-----/.test(inp) && pass)) {
+        const pk = forge.pki.decryptRsaPrivateKey(inp, pass);
+        if (!pk) throw new Error("복호화 실패(비밀번호 확인)");
+        L.push("🔑 암호화 개인키 복호화 성공 · RSA " + pk.n.bitLength() + "bit");
+        L.push(forge.pki.privateKeyInfoToPem ? "" : ""); L.push(forge.pki.privateKeyToPem(pk).split("\n").slice(0, 3).join("\n") + " …");
+      } else if (/-----BEGIN (RSA )?PRIVATE KEY-----/.test(inp)) {
+        const pk = forge.pki.privateKeyFromPem(inp); L.push("🔑 개인키 · RSA " + pk.n.bitLength() + "bit (평문 PEM)");
+      } else if (/-----BEGIN PUBLIC KEY-----/.test(inp)) {
+        const pk = forge.pki.publicKeyFromPem(inp); L.push("🔑 공개키 · RSA " + (pk.n ? pk.n.bitLength() + "bit" : "EC/기타"));
+      } else {
+        const der = forge.util.decode64(inp.replace(/\s+/g, ""));
+        const p12 = forge.pkcs12.pkcs12FromAsn1(forge.asn1.fromDer(der), false, pass);
+        L.push("📦 PKCS#12(.pfx) 파싱 성공");
+        p12.safeContents.forEach((sc) => sc.safeBags.forEach((bag) => {
+          if (bag.cert) { const cn = bag.cert.subject.getField("CN"); L.push("· 인증서 CN=" + (cn ? cn.value : "?") + " · 만료 " + bag.cert.validity.notAfter.toISOString().slice(0, 10)); }
+          if (bag.key && bag.key.n) L.push("· 개인키 RSA " + bag.key.n.bitLength() + "bit");
+        }));
+      }
+      o.textContent = ""; L.filter((x) => x).forEach((l) => o.appendChild(el("div", "solve-text", l)));
+    } catch (e) { o.textContent = "파싱 실패: " + (e.message || e); }
+  }
   function knownPlaintext() {
     const o = $("kpOut"); o.classList.remove("hidden"); o.textContent = "";
     const ct = getInputBytes();
@@ -2688,18 +2794,20 @@
   function syncFields() {
     const scheme = $("scheme").value;
     const isPass = scheme === "pass";
-    const isGcm  = scheme === "gcm";
-    const needsIv = scheme === "cbc" || scheme === "ctr" || scheme === "gcm" || scheme === "des" || scheme === "3des";
-    const hasPad  = scheme === "cbc" || scheme === "ecb" || scheme === "des" || scheme === "3des";
+    const isFernet = scheme === "fernet";
+    const keyOnly = isPass || isFernet;
+    const isAead = scheme === "gcm" || scheme === "chacha";
+    const needsIv = ["cbc", "ctr", "cfb", "ofb", "gcm", "chacha", "des", "3des"].indexOf(scheme) >= 0;
+    const hasPad  = ["cbc", "ecb", "cfb", "ofb", "des", "3des"].indexOf(scheme) >= 0;
 
-    $("ivField").classList.toggle("hidden", isPass || !needsIv);
-    $("tagField").classList.toggle("hidden", !isGcm);
-    $("aadField").classList.toggle("hidden", !isGcm);
+    $("ivField").classList.toggle("hidden", keyOnly || !needsIv);
+    $("tagField").classList.toggle("hidden", !isAead);
+    $("aadField").classList.toggle("hidden", !isAead);
     $("padWrap").classList.toggle("hidden", !hasPad);
-    $("keyLabel").textContent = isPass ? "비밀번호 (passphrase)" : "키";
-    $("keyFmt").classList.toggle("hidden", isPass);
+    $("keyLabel").textContent = isPass ? "비밀번호 (passphrase)" : isFernet ? "Fernet 키 (base64url 32B)" : "키";
+    $("keyFmt").classList.toggle("hidden", keyOnly);
     $("ctFmt").classList.toggle("hidden", isPass); // passphrase 출력은 항상 OpenSSL base64
-    $("iv").placeholder = isGcm ? "nonce (보통 12바이트)" : (scheme === "des" || scheme === "3des") ? "IV 8바이트 (비우면 ECB)" : "초기화 벡터 (보통 16바이트)";
+    $("iv").placeholder = isAead ? "nonce (보통 12바이트)" : (scheme === "des" || scheme === "3des") ? "IV 8바이트 (비우면 ECB)" : "초기화 벡터 (보통 16바이트)";
     toggleIvPrepend();
     liveCheck();
   }
@@ -2782,7 +2890,7 @@
     $("ivPrepend").onchange = () => { toggleIvPrepend(); liveCheck(); schedule(lastSrc); save(); };
     $("auto").onchange = save;
     $("genIv").onclick = () => {
-      const n = $("scheme").value === "gcm" ? 12 : 16;
+      const n = ($("scheme").value === "gcm" || $("scheme").value === "chacha") ? 12 : 16;
       $("iv").value = u8ToWA(randomU8(n)).toString(enc.Hex);
       $("ivFmt").value = "Hex";
       liveCheck(); schedule(lastSrc); save();
@@ -2854,6 +2962,8 @@
     $("jwtNone").onclick = jwtNoneForge;
     $("jwtConfuse").onclick = jwtConfuseForge;
     $("rsaRun").onclick = rsaDecrypt;
+    $("jweRun").onclick = jweDecrypt;
+    $("certRun").onclick = parseCertKey;
     $("autoCfg").onclick = runAutoCfg;
     $("kpRun").onclick = knownPlaintext;
     $("poRun").onclick = paddingOracleSim;
