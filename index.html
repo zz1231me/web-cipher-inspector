@@ -1129,6 +1129,87 @@
     cands.push({ label: label, score: score, apply: null, token: { icon: icon, subtitle: subtitle, decoded: decoded || null } });
   }
   function b64uJson(part) { try { return JSON.parse(new TextDecoder("utf-8", { fatal: false }).decode(b64ToU8(part))); } catch (e) { return null; } }
+  // 여러 프레임워크 세션/쿠키 포맷 식별 + 보안 특성 해설
+  function sessionPass(s0, noSpace, parts, cands) {
+    const push = (label, sub, payload, notes) => pushTok(cands, label, 0.85, "🍪", sub, { kind: "session", payload: payload || null, notes: notes });
+    // Laravel: base64(JSON{iv,value,mac}) — 암호화 세션 (URL 인코딩 대비 2회 시도)
+    let lj = null; try { lj = b64uJson(noSpace) || b64uJson(decodeURIComponent(noSpace)); } catch (e) {}
+    if (lj && lj.iv && lj.value && lj.mac) {
+      push("Laravel 세션 쿠키 (암호화)", "base64(JSON{iv,value,mac}) · AES-256-CBC/GCM · APP_KEY로 서명·암호화",
+        { iv: lj.iv, mac: lj.mac, value: "(AES 암호화됨 — APP_KEY 필요)" },
+        ["Laravel 암호화 세션입니다. 바깥은 base64(JSON), 안의 value는 AES-256-CBC(구) 또는 GCM(신)으로 암호화됩니다.",
+         "APP_KEY(.env)가 유출되면 value 복호화는 물론 위조까지 가능합니다 — mac은 HMAC-SHA256(iv+value) 무결성 검사입니다.",
+         "APP_KEY 노출 + unserialize 대상이면 PHP 객체 역직렬화 RCE로 이어질 수 있습니다(점검)."]); return true;
+    }
+    // ASP.NET ViewState: base64 (선두 0xFF01 → '/wE')
+    if (/^\/wE[A-Za-z0-9+/]+=*$/.test(noSpace) && noSpace.length > 16) {
+      push("ASP.NET ViewState (__VIEWSTATE)", "base64(0xFF 0x01…) · 페이지 상태 직렬화 · 흔히 끝에 HMAC",
+        null,
+        ["ASP.NET WebForms가 페이지 컨트롤 상태를 base64로 직렬화한 값입니다(0xFF01 프리앰블).",
+         "EnableViewStateMac=false 또는 MachineKey 유출 시 __VIEWSTATE 변조 → LosFormatter 역직렬화 RCE(ysoserial.net) 위험(심각).",
+         "끝 20/32바이트가 HMAC(SHA1/256) 서명인 경우가 많습니다. __VIEWSTATEGENERATOR 값도 함께 수집하세요."]); return true;
+    }
+    // Rails 세션: '데이터--서명' (첫 조각이 Marshal 또는 JSON일 때만)
+    if (s0.indexOf("--") > 0 && /^[%A-Za-z0-9\-_=+/.]+$/.test(noSpace)) {
+      const rp = s0.split("--");
+      if (rp.length >= 2 && rp[0].length > 12) {
+        let payload = null, fmt = "";
+        try { const dec = /%/.test(rp[0]) ? decodeURIComponent(rp[0]) : rp[0]; const u = b64ToU8(dec); if (u && u.length > 2) { if (u[0] === 4 && u[1] === 8) fmt = "Marshal(Ruby)"; else { const j = b64uJson(dec); if (j && typeof j === "object") { payload = j; fmt = "JSON"; } } } } catch (e) {}
+        if (fmt) {
+          push("Rails 세션 쿠키", "base64--HMAC · secret_key_base 서명 · " + fmt, payload,
+            ["Rails 세션 쿠키입니다(데이터--서명). 서명·암호화 키는 secret_key_base 입니다.",
+             fmt === "Marshal(Ruby)" ? "본문이 Ruby Marshal(\\x04\\x08) 직렬화입니다 — Rails 4.0 이하. secret_key_base 유출 시 위조 → 역직렬화 RCE 가능(심각)." : "본문이 JSON입니다. 서명만 되어 있으면 secret_key_base 유출 시 내용 위조가 가능합니다.",
+             "Rails 4.1+ 기본은 AES 암호화(encrypted cookie)라 본문이 안 읽히면 암호화된 것입니다."]); return true;
+        }
+      }
+    }
+    // Express connect.sid: s:<id>.<HMAC>  (URL 인코딩 s%3A 대응) — 서명 점(.) 필수
+    if (/^s(:|%3A)/i.test(s0) && s0.indexOf(".") > 2) {
+      const body = s0.replace(/^s(:|%3A)/i, ""), dot = body.lastIndexOf(".");
+      const sid = dot > 0 ? body.slice(0, dot) : body;
+      push("Express connect.sid 세션 ID", "s:<id>.<sig> · cookie-signature HMAC-SHA256(secret)",
+        { sessionId: sid.slice(0, 80) },
+        ["Node/Express express-session의 서명된 세션 ID입니다(s:ID.서명).",
+         "세션 데이터 자체는 서버(스토어)에 있고 쿠키엔 ID만 있습니다 — 쿠키 secret이 약하면 ID 위조가 가능합니다.",
+         "서명은 HMAC-SHA256(base64, = 패딩 제거). 세션 고정(Session Fixation)·예측 가능성도 점검하세요."]); return true;
+    }
+    // Flask/itsdangerous: payload.timestamp.signature (첫 조각 JSON)
+    if (parts.length === 3 && parts.every((p) => /^\.?[A-Za-z0-9\-_]*$/.test(p)) && parts[0].replace(/^\./, "").length >= 4) {
+      const compressed = parts[0][0] === ".";
+      const sess = b64uJson(parts[0].replace(/^\./, ""));
+      if (compressed || (sess && typeof sess === "object" && !Array.isArray(sess))) {
+        push("Flask/itsdangerous 서명 세션", "payload.timestamp.signature · SECRET_KEY HMAC 서명(암호화 아님)" + (compressed ? " · zlib 압축" : ""),
+          sess || null,
+          ["Flask 기본 세션은 서명만 됩니다 — 내용은 그대로 노출되고 SECRET_KEY로 무결성만 보장합니다.",
+           "SECRET_KEY가 약하거나 유출되면 flask-unsign 등으로 크랙/위조가 가능합니다(권한 클레임 변조 주의).",
+           compressed ? "선두 '.'은 zlib 압축 표시입니다." : "payload는 base64url(JSON)입니다."]); return true;
+      }
+    }
+    // Django 서명 쿠키/세션: value:timestamp:signature (콜론 구분, 첫 조각 JSON이면)
+    const cp = s0.split(":");
+    if (cp.length === 3 && cp.every((p) => /^[A-Za-z0-9\-_=+/.]*$/.test(p)) && cp[0].replace(/^\./, "").length >= 4) {
+      const j = b64uJson(cp[0].replace(/^\./, ""));
+      if (j && typeof j === "object" && !Array.isArray(j)) {
+        push("Django 서명 쿠키/세션", "value:timestamp:signature · SECRET_KEY HMAC(itsdangerous 계열)", j,
+          ["Django의 서명 값입니다(콜론 구분). 쿠키 기반 세션이면 내용이 그대로 노출됩니다.",
+           "SECRET_KEY 유출 시 위조가 가능합니다. DB 세션이면 sessionid만 무작위로 전달됩니다."]); return true;
+      }
+    }
+    // 불투명 서버측 세션 ID (디코드 불가 — 특성만 안내)
+    if (/^[0-9a-fA-F]{32}\.[\w.\-]+$/.test(s0)) {
+      push("Java 세션 (JSESSIONID)", "hex ID + '.노드' · 서버측 세션, 값은 불투명·무작위",
+        null,
+        ["Tomcat/JBoss 등 Java 서버의 세션 ID입니다. '.' 뒤는 로드밸런서 노드/워커 라우팅 ID입니다.",
+         "값은 서버 세션 스토어 참조용 난수라 복호 대상이 아닙니다 — 세션 고정·예측성·전송 보안(HttpOnly/Secure)만 점검."]); return true;
+    }
+    if (/^[a-z0-9]{26}$/.test(s0) && /[a-z]/.test(s0) && /[0-9]/.test(s0)) {
+      push("PHP 세션 ID (PHPSESSID)", "26자 소문자+숫자 · 서버측 세션, 값은 불투명",
+        null,
+        ["PHP 기본 세션 ID(26자)입니다. 값은 서버측 저장 참조용 난수라 복호 대상이 아닙니다.",
+         "세션 고정(Session Fixation)·엔트로피/예측성·쿠키 플래그(HttpOnly·Secure·SameSite)를 점검하세요."]); return true;
+    }
+    return false;
+  }
   function tokenPass(s0, noSpace, cands) {
     for (const t of TOKENS) if (t.re.test(s0)) {
       const icon = /해시/.test(t.n) ? "#️⃣" : /(PEM|SSH|인증서)/.test(t.n) ? "📜" : "🔑";
@@ -1153,13 +1234,7 @@
         pushTok(cands, "JWE · 암호화된 JWT", 0.9, "🎫", sub, { kind: "jwe", header: header }); return true;
       }
     }
-    // 서명 세션 쿠키 (Flask/itsdangerous 계열): payload.timestamp.signature — 첫 조각이 JSON이면 (진짜 JWT는 위에서 이미 처리)
-    if (parts.length === 3 && parts.every((p) => /^\.?[A-Za-z0-9\-_]*$/.test(p)) && parts[0].replace(/^\./, "").length >= 4) {
-      const sess = b64uJson(parts[0].replace(/^\./, ""));
-      if (sess && typeof sess === "object" && !Array.isArray(sess)) {
-        pushTok(cands, "서명 세션 쿠키 (Flask/itsdangerous)", 0.82, "🍪", "payload.timestamp.signature · HMAC 서명(암호화 아님) — 내용은 그대로 노출, SECRET_KEY를 알면 위조 가능", { kind: "session", payload: sess }); return true;
-      }
-    }
+    if (sessionPass(s0, noSpace, parts, cands)) return true;
     if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(s0)) {
       const ver = s0[14]; let sub = "v" + ver + " 식별자 — 암호문 아님";
       if (ver === "1" || ver === "6") {
@@ -1814,6 +1889,8 @@
       L.push({ text: "JWT의 header·payload는 Base64URL 인코딩일 뿐 암호화가 아닙니다 — 내용은 항상 그대로 읽힙니다. 서명은 위·변조 방지용입니다." });
     } else if (d && d.kind === "jwe") {
       L.push({ text: "JWE는 실제로 암호화된 토큰입니다 — payload는 키 없이 복원할 수 없습니다." });
+    } else if (d && d.kind === "session") {
+      (d.notes || []).forEach((t, i) => L.push({ text: t, warn: i === 0 ? false : /RCE|위조|유출|심각/.test(t) }));
     } else if (/bcrypt/.test(label)) {
       const hc = hashCandidates($("ct").value); if (hc) L.push({ text: "해시 종류: " + hc.join(" · ") });
       L.push({ text: "bcrypt — cost factor가 내장된 느린 단방향 해시. 무차별 대입이 느려 안전하지만, 약한 비밀번호는 사전 대입으로 뚫립니다." });
@@ -1866,7 +1943,7 @@
   function renderTokenFinal(box, c) {
     const d = c.token.decoded;
     box.classList.remove("hidden"); box.classList.add(/암호문|바이너리/.test(c.label) ? "hint" : "ok");
-    box.appendChild(el("div", "magic-t", c.token.icon + " " + c.label + (d ? " — 디코드된 내용 (서명 검증 안 함)" : "")));
+    box.appendChild(el("div", "magic-t", c.token.icon + " " + c.label + (d && (d.payload || d.header) ? " — 디코드된 내용 (서명 검증 안 함)" : "")));
     if (!d) {
       if (c.token.subtitle) box.appendChild(el("div", "magic-sub", c.token.subtitle));
       if (/해시|bcrypt|argon2/.test(c.label)) addCrackPrompt(box);
@@ -1881,7 +1958,7 @@
       if (times.length) box.appendChild(el("div", "magic-sub", times.map((k) => k + " = " + new Date(d.payload[k] * 1000).toISOString().replace("T", " ").slice(0, 19) + "Z").join("   ·   ")));
     }
     if (d.kind === "jwe") box.appendChild(el("div", "magic-sub", "본문(payload)은 암호화되어 있습니다 — 복호화하려면 키가 필요합니다."));
-    finalActions(box, pretty(d.payload || d.header || {}), false);
+    if (d.payload || d.header) finalActions(box, pretty(d.payload || d.header), false);
     if (d.kind === "jwt") {
       const act = el("div", "magic-actions");
       const b1 = el("button", "a-apply", "alg=none 위조 → 입력"); b1.type = "button"; b1.onclick = () => jwtNoneForge();

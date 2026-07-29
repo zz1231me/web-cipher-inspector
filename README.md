@@ -21,7 +21,9 @@
 - **오픈소스 활용(지연 로드)** — [CryptoJS](https://github.com/brix/crypto-js) 코어, [hash-wasm](https://github.com/Daninet/hash-wasm)(SHA3/RIPEMD/BLAKE2/CRC32 · bcrypt/argon2), [jsrsasign](https://github.com/kjur/jsrsasign)(JWT 검증), [node-forge](https://github.com/digitalbazaar/forge)(RSA/PEM).
 - **📊 시각적 종합 분석** — 암호문을 넣으면 "무엇인지 · 어떻게 구성됐는지 · 신뢰도(%)"를 아이콘 판정 + 신뢰도 막대 + 레이어 파이프라인 + 엔트로피 게이지 + 블록 정렬/선두 바이트 타일로 시각화. 매직넘버(gzip·PNG·PDF·DER·ZIP…), 토큰(JWT·JWE·PASETO·Fernet), 시크릿(Stripe·GitHub·AWS·bcrypt…), 해시(MD5·SHA·ObjectId), UUID/ULID 자동 식별.
 - **🚀 원클릭 "전부 시도"** — 버튼 하나로 분석·자동해독·해시 생성·크랙을 한 번에 실행하고 종합 결과를 한 곳에 모아 **전체 복사/리포트 저장**. 크랙은 **내장 공용 비밀번호 목록**을 기본 사용해 파일 업로드 없이 바로 동작(자기 `.txt`를 올리면 교체).
-- **붙여넣기 즉시 자동 판정** — Burp 등에서 뽑은 세션·쿠키·정체불명 값을 붙여넣으면 무엇인지·신뢰도·구성이 자동 판정됩니다. JWT·JWE·**서명 세션 쿠키(Flask/itsdangerous)**·UUID/ULID·Fernet·PASETO·각종 시크릿/해시를 식별하고, JWT는 결과 카드에서 **alg=none 위조·서명 크랙**을 바로 실행. `자동 브루트포스`를 켜두면 해시/암호문/JWT를 붙여넣는 즉시 **0클릭으로 내장 목록 크랙**까지 수행합니다.
+- **붙여넣기 즉시 자동 판정 + 세션 특성 분석** — Burp 등에서 뽑은 세션·쿠키·정체불명 값을 붙여넣으면 무엇인지·신뢰도·구성이 자동 판정됩니다. 프레임워크 세션을 폭넓게 식별하고 **각 세션의 정체·구조·보안 특성(어떤 공격이 유효한지)** 까지 해설합니다:
+  - **JWT / JWE**, **Flask/itsdangerous**, **Django**, **Rails**(Marshal/JSON `--` HMAC), **Laravel**(암호화 `{iv,value,mac}`), **Express connect.sid**, **ASP.NET ViewState**, **JSESSIONID / PHPSESSID**(불투명 서버측 세션), UUID/ULID·Fernet·PASETO·각종 시크릿/해시.
+  - JWT는 결과 카드에서 **alg=none 위조·서명 크랙**을 바로 실행. `자동 브루트포스`를 켜두면 해시/암호문/JWT를 붙여넣는 즉시 **0클릭으로 내장 목록 크랙**까지 수행합니다.
 - **🔑 사전 공격** — 내장 목록 또는 올린 `.txt` 단어목록으로 passphrase·AES 키·해시·JWT 비밀키를 무차별 대입. 발견 시 비밀번호와 평문을 자동 표시.
 - **양방향 라이브 변환** — 평문 ⇄ 암호문이 한 화면에. 한쪽에 입력·붙여넣기하면 반대쪽이 자동으로 채워집니다(자동 변환 토글 가능).
 - **지원 방식**
