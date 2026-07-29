@@ -445,6 +445,16 @@
         </div>
 
         <div class="field">
+          <label for="mtpCt">키 재사용 (다중시간패드 · 크립드래그) — 메인 입력이 C1</label>
+          <input id="mtpCt" type="text" placeholder="C2: 같은 키스트림으로 암호화된 두 번째 값 (hex/base64)" autocomplete="off" spellcheck="false" />
+          <div class="input-group" style="margin-top:8px;">
+            <input id="mtpCrib" type="text" placeholder="추가 크립 단어(선택)" autocomplete="off" spellcheck="false" />
+            <button class="btn ghost" id="mtpRun" type="button" style="flex:none;">크립드래그</button>
+          </div>
+          <div class="a-prev hidden" id="mtpOut"></div>
+        </div>
+
+        <div class="field">
           <label>헥스 덤프 (위 입력 바이트)</label>
           <div class="opts"><button class="link" id="hexDump" type="button">헥스 덤프 보기</button></div>
           <div class="a-prev hidden" id="hexOut"></div>
@@ -1086,6 +1096,9 @@
         const fmt = (u[0] === 0x1f && u[1] === 0x8b) ? "gzip" : (u[0] === 0x78 && [0x01, 0x5e, 0x9c, 0xda].indexOf(u[1]) >= 0) ? "deflate" : null;
         if (fmt && typeof DecompressionStream !== "undefined") {
           try { const buf = await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream(fmt))).arrayBuffer(); enq(new Uint8Array(buf), true, st.recipe.concat(fmt + " 해제")); } catch (e) {}
+        } else if (typeof DecompressionStream !== "undefined" && st.recipe.length <= 2 && u.length >= 8 && printableRatio(u) < 0.85) {
+          // 헤더 없는 raw deflate 시도 (gzdeflate 등)
+          try { const buf = await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream("deflate-raw"))).arrayBuffer(); const iu = new Uint8Array(buf); if (iu.length >= 2 && printableRatio(iu) > 0.6) enq(iu, true, st.recipe.concat("raw-deflate 해제")); } catch (e) {}
         }
         const pr = printableRatio(u);
         const decTxt = bytesToText(u);
@@ -1130,7 +1143,7 @@
     if ($("ct").value.trim()) { if (lastSolve && lastSolve.length) trace("자동 해독 성공 → " + ["입력"].concat(lastSolve[0].recipe, ["결과"]).join(" → "), "ok"); else if (doDecode) trace("자동 해독 → 읽을 수 있는 결과 없음"); }
     renderFinal();
     // 암호문/해시 + 사전 로드됨 → 자동 브루트포스가 켜져 있으면 자동, 아니면 물어봄
-    const target = looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value) || isJwtHS($("ct").value);
+    const target = looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value) || isJwtHS($("ct").value) || /^\*[0-9A-Fa-f]{40}$/.test($("ct").value.trim());
     if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && target) {
       if ($("optBrute") && $("optBrute").checked) { trace("자동 브루트포스 ON → 사전 대입/크랙 시작", "step"); scheduleDict(); }
       else trace("대상 감지 · 사전 로드됨 → 결과창 버튼 또는 ‘자동 브루트포스’ 체크로 시작", "warn");
@@ -1397,20 +1410,46 @@
     const map = { 32: ["MD5", CryptoJS.MD5], 40: ["SHA-1", CryptoJS.SHA1], 56: ["SHA-224", CryptoJS.SHA224], 64: ["SHA-256", CryptoJS.SHA256], 96: ["SHA-384", CryptoJS.SHA384], 128: ["SHA-512", CryptoJS.SHA512] };
     return map[s.length] ? { name: map[s.length][0], fn: map[s.length][1] } : null;
   }
-  async function runHexCrack(hashHex, words, h, my) {
+  // 해시 문자열 → 시도할 알고리즘 목록
+  function hexHashAlgos(hash) {
+    const h = hash.trim();
+    if (/^\*[0-9A-Fa-f]{40}$/.test(h)) return [{ name: "MySQL4.1", fn: (w) => ("*" + CryptoJS.SHA1(CryptoJS.SHA1(w)).toString()).toUpperCase() }];
+    const s = h.toLowerCase(); if (!/^[0-9a-f]+$/.test(s)) return null;
+    const L = s.length, list = [];
+    if (L === 32) { list.push({ name: "MD5", fn: (w) => CryptoJS.MD5(w).toString() }); list.push({ name: "NTLM", ntlm: true }); }
+    else if (L === 40) { list.push({ name: "SHA-1", fn: (w) => CryptoJS.SHA1(w).toString() }); list.push({ name: "MySQL4.1(hex)", fn: (w) => CryptoJS.SHA1(CryptoJS.SHA1(w)).toString() }); }
+    else if (L === 56) list.push({ name: "SHA-224", fn: (w) => CryptoJS.SHA224(w).toString() });
+    else if (L === 64) list.push({ name: "SHA-256", fn: (w) => CryptoJS.SHA256(w).toString() });
+    else if (L === 96) list.push({ name: "SHA-384", fn: (w) => CryptoJS.SHA384(w).toString() });
+    else if (L === 128) list.push({ name: "SHA-512", fn: (w) => CryptoJS.SHA512(w).toString() });
+    return list.length ? list : null;
+  }
+  async function ntlmHash(hw, w) {
+    const u = new Uint8Array(w.length * 2);
+    for (let i = 0; i < w.length; i++) { const c = w.charCodeAt(i); u[i * 2] = c & 0xff; u[i * 2 + 1] = (c >> 8) & 0xff; }
+    return await hw.md4(u);
+  }
+  async function runHexCrack(hashHex, words, my) {
+    const algos = hexHashAlgos(hashHex);
+    if (!algos) { dstat("bad", "해시 형식 인식 실패"); return; }
     $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
-    const target = hashHex.toLowerCase(), t0 = performance.now();
+    const target = hashHex.trim(), targetLc = target.toLowerCase(), t0 = performance.now();
     let found = null;
-    for (let i = 0; i < words.length; i++) {
-      if (my !== dictSeq) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; }
-      let hv = ""; try { hv = h.fn(words[i]).toString(); } catch (e) {}
-      if (hv === target) { found = words[i]; break; }
-      if ((i & 1023) === 0) { dstat("idle", "🔓 " + h.name + " 크랙 " + i.toLocaleString() + " / " + words.length.toLocaleString() + " …"); await new Promise((r) => setTimeout(r, 0)); }
+    for (const alg of algos) {
+      if (found) break;
+      let hw = null;
+      if (alg.ntlm) { try { dstat("idle", "🔓 NTLM 준비 (hash-wasm md4)…"); hw = await loadHashwasm(); } catch (e) { continue; } if (my !== dictSeq) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; } }
+      for (let i = 0; i < words.length; i++) {
+        if (my !== dictSeq) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; }
+        let hv = ""; try { hv = alg.ntlm ? await ntlmHash(hw, words[i]) : alg.fn(words[i]); } catch (e) {}
+        if (hv && (hv.toLowerCase() === targetLc)) { found = { w: words[i], algo: alg.name }; break; }
+        if ((i & (alg.ntlm ? 127 : 1023)) === 0) { dstat("idle", "🔓 " + alg.name + " 크랙 " + i.toLocaleString() + " / " + words.length.toLocaleString() + " …"); await new Promise((r) => setTimeout(r, 0)); }
+      }
     }
     const secs = ((performance.now() - t0) / 1000).toFixed(1);
     $("dictRun").disabled = false; $("dictStop").classList.add("hidden");
-    if (found) dstat("ok", "✓ " + h.name + " 크랙 성공: \"" + found + "\" · " + words.length.toLocaleString() + "개 중 " + secs + "s");
-    else dstat("bad", "✕ " + h.name + " — 사전 " + words.length.toLocaleString() + "개에서 못 찾음 · " + secs + "s");
+    if (found) dstat("ok", "✓ " + found.algo + " 크랙 성공: \"" + found.w + "\" · " + words.length.toLocaleString() + "개 중 " + secs + "s");
+    else dstat("bad", "✕ " + algos.map((a) => a.name).join("/") + " — 사전 " + words.length.toLocaleString() + "개에서 못 찾음 · " + secs + "s");
   }
   function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("load " + src)); document.head.appendChild(s); }); }
   let hwP = null, jsrsaP = null, forgeP = null;
@@ -1475,9 +1514,8 @@
     // bcrypt/argon2 해시 → hash-wasm 크랙
     const ht = isHashInput(ct);
     if (ht) { return runHashCrack(ct, words, ht, ++dictSeq); }
-    // 원시 MD5/SHA hex 해시 → 각 단어를 해싱해 비교
-    const hx = hashByLen(ct);
-    if (hx) { return runHexCrack(ct, words, hx, ++dictSeq); }
+    // MD5/SHA/NTLM/MySQL hex 해시 → 각 단어를 해싱해 비교
+    if (hashByLen(ct) || /^\*[0-9A-Fa-f]{40}$/.test(ct)) { return runHexCrack(ct, words, ++dictSeq); }
     // JWT(HS) → 서명 비밀키 크랙
     const jalg = isJwtHS(ct);
     if (jalg) { return runJwtCrack(ct, words, jalg, ++dictSeq); }
@@ -1702,6 +1740,29 @@
     const b = el("div", "magic-out"); b.textContent = rec; o.appendChild(b);
     o.appendChild(el("div", "solve-text", rec === ptStr ? "✓ 원본과 일치 — CBC 패딩 오라클이 존재하면 키 없이 평문 전체가 복원됩니다." : "부분 복구."));
     trace("패딩오라클 시연 완료 · " + (rec === ptStr ? "원본과 일치" : "부분"), rec === ptStr ? "ok" : "warn");
+  }
+  function runCribDrag() {
+    const o = $("mtpOut"); o.classList.remove("hidden"); o.textContent = "";
+    const c1 = getInputBytes(), raw = $("mtpCt").value.trim().replace(/\s+/g, "");
+    let c2 = null; try { c2 = looksHex(raw) ? hexToU8(raw) : b64ToU8(raw); } catch (e) {}
+    if (!c1.length || !c2 || !c2.length) { o.textContent = "메인 입력(C1)과 두 번째 암호문(C2)을 넣으세요."; return; }
+    const n = Math.min(c1.length, c2.length), X = new Uint8Array(n);
+    for (let i = 0; i < n; i++) X[i] = c1[i] ^ c2[i];
+    const cribs = ["the ", " the ", " and ", " for ", " you ", " are ", " pass", " admin", " secret", " flag{", " http", " user ", "password", " token", " key=", "://", "2024", "2025", ($("mtpCrib").value || "").trim()].filter((x) => x && x.length >= 3);
+    const hits = [];
+    for (const crib of cribs) {
+      const cb = new TextEncoder().encode(crib);
+      for (let off = 0; off + cb.length <= n; off++) {
+        let ok = true, other = "";
+        for (let i = 0; i < cb.length; i++) { const b = X[off + i] ^ cb[i]; if (b < 32 || b > 126) { ok = false; break; } other += String.fromCharCode(b); }
+        if (ok && /[a-z]/.test(other)) { const sc = englishScore(other); if (sc > 14) hits.push({ off: off, crib: crib, other: other, sc: sc }); }
+      }
+    }
+    hits.sort((a, b) => b.sc - a.sc);
+    o.appendChild(el("div", "solve-text", "C1⊕C2 = P1⊕P2 · " + n + "B · 히트 " + hits.length + "개 (한쪽에 크립이 있으면 다른쪽 평문 조각):"));
+    hits.slice(0, 15).forEach((h) => o.appendChild(el("div", "solve-text", "off " + h.off + " · \"" + h.crib + "\" ↔ \"" + h.other + "\"")));
+    if (!hits.length) o.appendChild(el("div", "solve-text", "히트 없음 — 같은 키스트림이 아니거나 크립이 안 맞습니다."));
+    trace("MTP 크립드래그 · 히트 " + hits.length, "step");
   }
   function shareState() {
     const st = {}; ["scheme", "key", "keyFmt", "iv", "ivFmt", "ctFmt", "ct"].forEach((f) => (st[f] = $(f).value));
@@ -2061,6 +2122,7 @@
     $("ct").addEventListener("input", () => { if (suppress) return; analyzeNow(); if (!$("optDecrypt") || $("optDecrypt").checked) schedule("ct"); });
     ["optDecode", "optXor", "optDict", "optDecrypt", "optBrute"].forEach((id) => { $(id).onchange = () => { analyzeNow(); if ($("optDecrypt").checked) schedule("ct"); save(); }; });
     $("hexDump").onclick = () => { const o = $("hexOut"); o.classList.remove("hidden"); const u = getInputBytes(); o.textContent = u.length ? hexdump(u, 512) : "위에 입력이 없습니다."; };
+    $("mtpRun").onclick = runCribDrag;
     $("toolBox").addEventListener("toggle", () => { if ($("toolBox").open) loadHashwasm().then(() => updateTools()).catch(() => {}); });
 
     $("exBtn").onclick = () => { $("ct").value = btoa('{"user":"admin","role":"guest","exp":1699999999}'); $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
