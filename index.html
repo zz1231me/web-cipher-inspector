@@ -256,6 +256,7 @@
         <label class="chk"><input type="checkbox" id="optXor" checked /> XOR·ROT</label>
         <label class="chk"><input type="checkbox" id="optDict" checked /> 사전 대입</label>
         <label class="chk"><input type="checkbox" id="optDecrypt" checked /> 키로 복호화</label>
+        <label class="chk"><input type="checkbox" id="optBrute" /> 자동 브루트포스</label>
       </div>
       <div class="pstatus idle" id="ctStatus"></div>
 
@@ -441,6 +442,12 @@
             <button class="btn ghost" id="kpRun" type="button" style="flex:none;">키 복구</button>
           </div>
           <div class="a-prev hidden" id="kpOut"></div>
+        </div>
+
+        <div class="field">
+          <label>헥스 덤프 (위 입력 바이트)</label>
+          <div class="opts"><button class="link" id="hexDump" type="button">헥스 덤프 보기</button></div>
+          <div class="a-prev hidden" id="hexOut"></div>
         </div>
 
         <div class="field" style="margin:0;">
@@ -1122,8 +1129,12 @@
     if (seq !== anaSeq) return;
     if ($("ct").value.trim()) { if (lastSolve && lastSolve.length) trace("자동 해독 성공 → " + ["입력"].concat(lastSolve[0].recipe, ["결과"]).join(" → "), "ok"); else if (doDecode) trace("자동 해독 → 읽을 수 있는 결과 없음"); }
     renderFinal();
-    // 암호문/해시 + 사전 로드됨 → 자동으로 대입/크랙까지
-    if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && (looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value) || isJwtHS($("ct").value))) { trace("사전 로드됨 + 대상 감지 → 자동 대입/크랙 시작", "step"); scheduleDict(); }
+    // 암호문/해시 + 사전 로드됨 → 자동 브루트포스가 켜져 있으면 자동, 아니면 물어봄
+    const target = looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value) || isJwtHS($("ct").value);
+    if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && target) {
+      if ($("optBrute") && $("optBrute").checked) { trace("자동 브루트포스 ON → 사전 대입/크랙 시작", "step"); scheduleDict(); }
+      else trace("대상 감지 · 사전 로드됨 → 결과창 버튼 또는 ‘자동 브루트포스’ 체크로 시작", "warn");
+    }
   }
   function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase", rc4: "RC4", des: "DES", "3des": "Triple DES" }; return m[$("scheme").value] || "복호화"; }
   function pretty(o) { try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); } }
@@ -1142,6 +1153,44 @@
     return null;
   }
   function srcLine() { const h = sourceHint($("ct").value); return h ? [{ text: "추정 출처/생성기: " + h }] : []; }
+  // 해시 종류 후보 식별 (길이·형식 기반, hashid 방식)
+  function hashCandidates(s) {
+    s = (s || "").trim();
+    if (/^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/.test(s)) return ["bcrypt (hashcat 3200)"];
+    if (/^\$argon2id\$/.test(s)) return ["Argon2id"];
+    if (/^\$argon2i\$/.test(s)) return ["Argon2i"];
+    if (/^\$argon2d\$/.test(s)) return ["Argon2d"];
+    if (/^\$1\$/.test(s)) return ["md5crypt ($1$, hc 500)"];
+    if (/^\$5\$/.test(s)) return ["sha256crypt ($5$, hc 7400)"];
+    if (/^\$6\$/.test(s)) return ["sha512crypt ($6$, hc 1800)"];
+    if (/^\{SSHA\}/.test(s)) return ["LDAP salted SHA-1 (hc 111)"];
+    if (/^\{SHA\}/.test(s)) return ["LDAP SHA-1 (hc 101)"];
+    if (/^pbkdf2_sha256\$/.test(s)) return ["Django PBKDF2-SHA256 (hc 10000)"];
+    if (/^\*[0-9A-Fa-f]{40}$/.test(s)) return ["MySQL 4.1+ = SHA1(SHA1(pw)) (hc 300)"];
+    if (/^[0-9a-fA-F]+$/.test(s)) {
+      const m = {
+        16: ["MySQL323 (hc 200)", "CRC64"],
+        32: ["MD5 (hc 0)", "NTLM (hc 1000)", "MD4 (hc 900)", "LM (hc 3000)", "MD5(md5)"],
+        40: ["SHA-1 (hc 100)", "RIPEMD-160 (hc 6000)", "MySQL5", "HAVAL-160", "Tiger-160"],
+        56: ["SHA-224 (hc 1300)", "SHA3-224", "Keccak-224"],
+        64: ["SHA-256 (hc 1400)", "SHA3-256 (hc 17400)", "BLAKE2s-256", "Keccak-256", "RIPEMD-256", "GOST"],
+        96: ["SHA-384 (hc 10800)", "SHA3-384", "Keccak-384"],
+        128: ["SHA-512 (hc 1700)", "SHA3-512 (hc 17600)", "BLAKE2b-512 (hc 600)", "Whirlpool (hc 6100)", "Keccak-512"]
+      };
+      return m[s.length] || null;
+    }
+    return null;
+  }
+  function hexdump(u8, max) {
+    max = max || 400; const n = Math.min(u8.length, max), lines = [];
+    for (let off = 0; off < n; off += 16) {
+      const row = []; let asc = "";
+      for (let i = 0; i < 16; i++) { if (off + i < n) { const b = u8[off + i]; row.push(b.toString(16).padStart(2, "0")); asc += (b >= 32 && b <= 126) ? String.fromCharCode(b) : "."; } else row.push("  "); }
+      lines.push(off.toString(16).padStart(8, "0") + "  " + row.slice(0, 8).join(" ") + "  " + row.slice(8).join(" ") + "  |" + asc + "|");
+    }
+    if (u8.length > max) lines.push("… (" + (u8.length - max).toLocaleString() + " bytes 생략)");
+    return lines.join("\n");
+  }
   function appendCommentary(box, lines) {
     if (!lines || !lines.length) return;
     const c = el("div", "cmt"); c.appendChild(el("div", "cmt-t", "💬 해설"));
@@ -1172,6 +1221,7 @@
     } else if (d && d.kind === "jwe") {
       L.push({ text: "JWE는 실제로 암호화된 토큰입니다 — payload는 키 없이 복원할 수 없습니다." });
     } else if (/bcrypt/.test(label)) {
+      const hc = hashCandidates($("ct").value); if (hc) L.push({ text: "해시 종류: " + hc.join(" · ") });
       L.push({ text: "bcrypt — cost factor가 내장된 느린 단방향 해시. 무차별 대입이 느려 안전하지만, 약한 비밀번호는 사전 대입으로 뚫립니다." });
       L.push({ text: "해시는 복호화 대상이 아닙니다 — 원문 후보를 해싱해 대조하는 방식으로만 크랙됩니다." });
     } else if (/argon2/.test(label)) {
@@ -1194,6 +1244,7 @@
     const L = [];
     if (hx) {
       L.push({ text: hx.name + " 길이의 hex — 단방향 해시일 가능성이 높습니다. 원문은 사전 대입으로만 역추적하며, 대칭암호일 수도 있어 키가 있으면 ‘설정 자동 탐색’으로 확인하세요." });
+      const hc = hashCandidates(ct); if (hc) L.push({ text: "해시 종류 후보: " + hc.join(" · ") + "  (길이 기반 추정 — 정확한 판별은 컨텍스트 필요)" });
       if (/MD5|SHA-1/.test(hx.name)) L.push({ text: hx.name + "은(는) 충돌·고속연산에 취약 — 서명/무결성이나 비밀번호 저장 용도로는 부적합합니다.", warn: true });
     }
     if (info) {
@@ -1971,7 +2022,7 @@
   const STORE = "cipherInspector.v3";
   function save() {
     try {
-      const o = { lastSrc, ivPrepend: $("ivPrepend").checked, auto: $("auto").checked, optDecode: $("optDecode").checked, optXor: $("optXor").checked, optDict: $("optDict").checked, optDecrypt: $("optDecrypt").checked };
+      const o = { lastSrc, ivPrepend: $("ivPrepend").checked, auto: $("auto").checked, optDecode: $("optDecode").checked, optXor: $("optXor").checked, optDict: $("optDict").checked, optDecrypt: $("optDecrypt").checked, optBrute: $("optBrute").checked };
       FIELDS.forEach((f) => (o[f] = $(f).value));
       localStorage.setItem(STORE, JSON.stringify(o));
     } catch (e) {}
@@ -1983,6 +2034,7 @@
       if (o.ivPrepend) $("ivPrepend").checked = true;
       if (o.auto === false) $("auto").checked = false;
       ["optDecode", "optXor", "optDict", "optDecrypt"].forEach((id) => { if (o[id] === false) $(id).checked = false; });
+      if (o.optBrute) $("optBrute").checked = true;
       if (o.lastSrc) lastSrc = o.lastSrc;
     } catch (e) {}
   }
@@ -2007,7 +2059,8 @@
 
     $("pt").addEventListener("input", () => { if (!suppress) schedule("pt"); });
     $("ct").addEventListener("input", () => { if (suppress) return; analyzeNow(); if (!$("optDecrypt") || $("optDecrypt").checked) schedule("ct"); });
-    ["optDecode", "optXor", "optDict", "optDecrypt"].forEach((id) => { $(id).onchange = () => { analyzeNow(); if ($("optDecrypt").checked) schedule("ct"); save(); }; });
+    ["optDecode", "optXor", "optDict", "optDecrypt", "optBrute"].forEach((id) => { $(id).onchange = () => { analyzeNow(); if ($("optDecrypt").checked) schedule("ct"); save(); }; });
+    $("hexDump").onclick = () => { const o = $("hexOut"); o.classList.remove("hidden"); const u = getInputBytes(); o.textContent = u.length ? hexdump(u, 512) : "위에 입력이 없습니다."; };
     $("toolBox").addEventListener("toggle", () => { if ($("toolBox").open) loadHashwasm().then(() => updateTools()).catch(() => {}); });
 
     $("exBtn").onclick = () => { $("ct").value = btoa('{"user":"admin","role":"guest","exp":1699999999}'); $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
@@ -2020,10 +2073,10 @@
         wordlistText = await f.text();
         const n = wordlistText.split(/\r?\n/).filter((w) => w.trim()).length;
         $("dictBox").open = true;
-        const ctv = $("ct").value.trim();
-        if (ctv && (looksOpenSSL(ctv) || $("dictMode").value !== "auto")) { dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 — 자동 시도 중…"); runDict(true); }
-        else if (ctv) dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 로드됨 — [지금 시도]를 누르면 현재 방식으로 대입합니다");
-        else dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 로드됨 — 위에 암호문을 넣으세요");
+        const ctv = $("ct").value.trim(), autoB = $("optBrute") && $("optBrute").checked;
+        if (ctv && autoB) { dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 — 자동 브루트포스 실행 중…"); runDict(true); }
+        else if (ctv) dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 로드됨 — [지금 시도] 또는 결과창 버튼으로 시작 (‘자동 브루트포스’ 체크 시 자동)");
+        else dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 로드됨 — 위에 암호문/해시를 넣으세요");
       } catch (err) { dstat("bad", "파일을 읽지 못했습니다"); }
     };
     $("dictRun").onclick = () => runDict(false);
