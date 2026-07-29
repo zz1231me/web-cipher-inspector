@@ -272,19 +272,21 @@
           <option value="utf-8">UTF-8</option>
           <option value="euc-kr">EUC-KR/CP949</option>
         </select>
+        <button class="chip" id="pasteBtn" type="button" title="클립보드에서 가져오기">가져오기</button>
         <button class="chip" id="histBtn" type="button">최근</button>
         <button class="chip" id="exBtn" type="button">예시</button>
         <button class="chip" id="copyCt" type="button">복사</button>
         <button class="chip" id="clrCt" type="button">지우기</button>
       </div>
       <div class="hist hidden" id="histList"></div>
-      <textarea id="ct" class="ct-main" placeholder="암호문 / 인코딩 데이터 / 해시를 붙여넣으세요. 아래 체크된 작업이 자동 실행됩니다."></textarea>
+      <textarea id="ct" class="ct-main" placeholder="암호문 / 인코딩 데이터 / 해시를 붙여넣으세요. 파일을 여기로 끌어다 놓으면 바이트를 읽어 자동 분석합니다."></textarea>
       <div class="auto-strip">
         <span class="auto-label">자동 실행</span>
         <label class="chk"><input type="checkbox" id="optDecode" checked /> 인코딩·압축 해독</label>
         <label class="chk"><input type="checkbox" id="optXor" checked /> XOR·ROT</label>
         <label class="chk"><input type="checkbox" id="optDict" checked /> 사전 대입</label>
         <label class="chk"><input type="checkbox" id="optDecrypt" checked /> 키로 복호화</label>
+        <label class="chk"><input type="checkbox" id="optCommon" checked /> 흔한 키 자동</label>
         <label class="chk"><input type="checkbox" id="optBrute" /> 자동 브루트포스</label>
       </div>
       <div class="pstatus idle" id="ctStatus"></div>
@@ -1037,7 +1039,31 @@
     lastSrc = "ct";
     analyzeNow(); save(); convert("ct");
   }
-  let anaSeq = 0, lastCands = null, lastSolve = null, aesPlain = null;
+  let anaSeq = 0, lastCands = null, lastSolve = null, aesPlain = null, commonHit = null, commonSeq = 0;
+  // CTF·오설정에서 흔한 키/비밀번호 — 키 미입력 시 자동 시도
+  const COMMON_KEYS = [
+    "0000000000000000", "1111111111111111", "1234567890123456", "0123456789abcdef",
+    "YELLOW SUBMARINE", "aaaaaaaaaaaaaaaa", "password", "passw0rd", "secret", "secretkey",
+    "changeit", "admin", "test", "key", "12345678", "abcdefghijklmnop",
+    "00000000000000000000000000000000", "0123456789abcdef0123456789abcdef"
+  ];
+  async function autoCommonKeys(seq) {
+    const ctStr = $("ct").value.trim();
+    commonHit = null;
+    if (!ctStr || ctStr.length > 4096 || !looksCipher(ctStr)) return;
+    trace("흔한 키 자동 시도 → " + COMMON_KEYS.length + "개 상수 키/비번 대입", "step", "crack");
+    let best = null;
+    for (const k of COMMON_KEYS) {
+      let r; try { r = await tryAllConfigs(ctStr, k); } catch (e) { continue; }
+      if (seq !== commonSeq) return; // 새 입력이 들어오면 중단
+      if (r && r.length && r[0].score > 55 && r[0].text.length >= 4 && (!best || r[0].score > best.score)) best = { key: k, label: r[0].label, text: r[0].text, score: r[0].score };
+    }
+    if (best) {
+      commonHit = best;
+      trace("흔한 키 적중 → '" + best.key + "' · " + best.label, "ok", "crack");
+      if (seq === anaSeq) renderFinal();
+    } else trace("흔한 키 자동 → 적중 없음", "info", "crack");
+  }
   async function analyzeNow() {
     const seq = ++anaSeq;
     traceClear();
@@ -1118,6 +1144,14 @@
     if (c >= 32 && c <= 126) return -0.6;          // 기타 기호 소폭 감점
     return -20;                                    // 비출력 페널티
   }
+  // 텍스트 친화 점수(ASCII 라틴/인쇄 위주): 반복키 XOR 열별 브루트의 보조 스코어러
+  function byteTextScore(c) {
+    if (c === 9 || c === 10 || c === 13 || c === 32) return 2;   // 공백류
+    if (c >= 33 && c <= 126) return 1;                            // ASCII 인쇄
+    if (c >= 0x80 && c <= 0xbf) return 0.4;                       // UTF-8 continuation
+    if (c >= 0xc2 && c <= 0xef) return 0.35;                      // UTF-8 lead(2~3B)
+    return -6;                                                    // 제어/비정상 바이트
+  }
   // Kasiski: 반복 3-그램 거리의 공약수로 키 길이 후보 추정
   function kasiskiLengths(u8, maxLen) {
     const seen = {}, factor = {};
@@ -1146,16 +1180,24 @@
     kasiskiLengths(u8, maxLen).forEach((L) => { if (candLens.indexOf(L) < 0) candLens.push(L); });
     let best = null;
     for (const L of candLens.slice(0, 5)) {
-      const key = new Uint8Array(L);
+      // 열별로 영어빈도 / 텍스트친화 두 스코어러의 최적 키바이트를 각각 구해 두 개의 키 후보 생성
+      const keyE = new Uint8Array(L), keyG = new Uint8Array(L);
       for (let col = 0; col < L; col++) {
         const colArr = []; for (let i = col; i < u8.length; i += L) colArr.push(u8[i]);
-        let bk = 0, bes = -1e9;
-        for (let k = 0; k < 256; k++) { let s = 0; for (let j = 0; j < colArr.length; j++) s += charScore(colArr[j] ^ k); if (s > bes) { bes = s; bk = k; } }
-        key[col] = bk;
+        let bkE = 0, besE = -1e9, bkG = 0, besG = -1e9;
+        for (let k = 0; k < 256; k++) {
+          let sE = 0, sG = 0;
+          for (let j = 0; j < colArr.length; j++) { const x = colArr[j] ^ k; sE += charScore(x); sG += byteTextScore(x); }
+          if (sE > besE) { besE = sE; bkE = k; }
+          if (sG > besG) { besG = sG; bkG = k; }
+        }
+        keyE[col] = bkE; keyG[col] = bkG;
       }
-      const t = new TextDecoder("utf-8", { fatal: false }).decode(xorBytes(u8, key));
-      const sc = scoreAll(t);
-      if (!best || sc > best.sc) best = { key: key, text: t, sc: sc, L: L };
+      [keyE, keyG].forEach((key) => {
+        const t = new TextDecoder("utf-8", { fatal: false }).decode(xorBytes(u8, key));
+        const sc = scoreAll(t);
+        if (!best || sc > best.sc) best = { key: key, text: t, sc: sc, L: L };
+      });
     }
     return best;
   }
@@ -1230,7 +1272,7 @@
             for (let k = 1; k < 256; k++) { const x = xorBytes(u, [k]); if (printableRatio(x) > 0.9) { const t = new TextDecoder("utf-8", { fatal: false }).decode(x); const es = englishScore(t); if (!best || es > best.es) best = { k: k, t: t, es: es }; } }
             if (best && best.es > 20 && best.es > straightEs + 10) results.push({ recipe: st.recipe.concat("XOR 0x" + best.k.toString(16).padStart(2, "0")), text: best.t, score: scoreAll(best.t) + 4 });
           }
-          // 반복키(Vigenère) XOR — 첫 계층·이진 데이터에 한해
+          // 반복키(Vigenère) XOR — 첫 계층·이진 데이터에 한해 (라틴/ASCII 평문 대상)
           if (st.recipe.length === 1 && u.length >= 24 && u.length <= 4096) {
             const rk = breakRepeatingXor(u, 40);
             if (rk && rk.key.length >= 2 && rk.sc > 75 && englishScore(rk.text) > 25) results.push({ recipe: st.recipe.concat("반복키 XOR " + rk.key.length + "B"), text: rk.text, score: rk.sc });
@@ -1262,6 +1304,11 @@
     if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && target) {
       if ($("optBrute") && $("optBrute").checked) { trace("자동 브루트포스 ON → 사전 대입/크랙 시작", "step", "crack"); scheduleDict(); }
       else trace("대상 감지 · 사전 로드됨 → 결과창 버튼 또는 ‘자동 브루트포스’ 체크로 시작", "warn", "crack");
+    }
+    // 키 미입력 + 암호문 추정 + 흔한 키 자동 ON → 상수 키 자동 대입
+    commonSeq++; commonHit = null;
+    if ((!lastSolve || !lastSolve.length) && (!aesPlain || aesPlain === "") && (!$("optCommon") || $("optCommon").checked) && !$("key").value.trim() && looksCipher($("ct").value)) {
+      autoCommonKeys(seq);
     }
   }
   function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase", rc4: "RC4", des: "DES", "3des": "Triple DES" }; return m[$("scheme").value] || "복호화"; }
@@ -1474,10 +1521,24 @@
     }
     appendCommentary(box, tokenLines(c));
   }
-  function finalActions(box, text, withToPt) {
+  function downloadBytes(name, u8) {
+    const blob = new Blob([u8], { type: "application/octet-stream" });
+    const url = URL.createObjectURL(blob), a = document.createElement("a");
+    a.href = url; a.download = name; document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
+  }
+  function finalActions(box, text, withToPt, bytes) {
     const act = el("div", "magic-actions");
     const cp = el("button", "a-apply", "결과 복사"); cp.type = "button"; cp.onclick = () => copy(text, cp);
     act.appendChild(cp);
+    const dl = el("button", "a-apply", "파일로 저장"); dl.type = "button";
+    dl.onclick = () => {
+      const u8 = bytes && bytes.length ? bytes : new TextEncoder().encode(text);
+      // 바이너리(비인쇄 다수)면 .bin, 아니면 .txt
+      let bin = false; for (let i = 0; i < Math.min(u8.length, 512); i++) { const b = u8[i]; if (b !== 9 && b !== 10 && b !== 13 && (b < 32 || b === 127)) { bin = true; break; } }
+      downloadBytes("cipher-inspector-result" + (bin ? ".bin" : ".txt"), u8);
+    };
+    act.appendChild(dl);
     if (withToPt) {
       const toPt = el("button", "a-apply", "평문칸에 넣기 (재암호화)"); toPt.type = "button";
       toPt.onclick = () => { $("aesBox").open = true; setVal($("pt"), text); status("pt", "ok", "← 결과 (" + text.length.toLocaleString() + "자)"); };
@@ -1499,6 +1560,15 @@
       box.appendChild(el("div", "magic-t", "🔓 복호화된 평문 · " + schemeLabel()));
       box.appendChild(el("div", "magic-out", aesPlain.length > 4000 ? aesPlain.slice(0, 4000) + " …" : aesPlain));
       finalActions(box, aesPlain, false);
+      return;
+    }
+    // 1.2) 흔한 키 자동 적중 (사용자 키 미입력 시)
+    if (commonHit) {
+      box.classList.add("ok");
+      box.appendChild(el("div", "magic-t", "🔓 흔한 키로 복호화 · 키='" + commonHit.key + "'"));
+      box.appendChild(el("div", "magic-recipe", "")).appendChild(el("span", "a-step", commonHit.label));
+      box.appendChild(el("div", "magic-out", commonHit.text.length > 4000 ? commonHit.text.slice(0, 4000) + " …" : commonHit.text));
+      finalActions(box, commonHit.text, true);
       return;
     }
     // 1.5) 토큰(JWT/JWE/UUID/시크릿/해시 등) — 디코드 또는 판정 표시
@@ -2029,10 +2099,19 @@
     const o = $("autoCfgOut"); o.classList.remove("hidden"); o.textContent = "가능한 설정을 전수 시도 중…";
     const ct = $("ct").value.trim(), key = $("key").value;
     if (!ct) { o.textContent = "위에 암호문을 넣으세요."; return; }
-    if (!key) { o.textContent = "키/비밀번호를 입력하세요."; return; }
-    const r = await tryAllConfigs(ct, key);
+    let r, usedKeys = null;
+    if (!key) {
+      // 키 미입력 → 흔한 상수 키/비번 전수 시도
+      o.textContent = "키 미입력 — 흔한 키 " + COMMON_KEYS.length + "개로 자동 시도 중…";
+      const all = [];
+      for (const k of COMMON_KEYS) { let rr; try { rr = await tryAllConfigs(ct, k); } catch (e) { continue; } rr.forEach((x) => all.push({ label: "키='" + k + "' · " + x.label, text: x.text, score: x.score })); }
+      const seen = new Set(); r = all.filter((x) => (seen.has(x.text) ? false : (seen.add(x.text), true))).sort((a, b) => b.score - a.score).slice(0, 8);
+      usedKeys = true;
+    } else {
+      r = await tryAllConfigs(ct, key);
+    }
     o.textContent = "";
-    if (!r.length) { o.textContent = "어떤 설정으로도 읽을 수 있는 평문이 안 나왔습니다 (키·인코딩·방식 재확인)."; return; }
+    if (!r.length) { o.textContent = usedKeys ? "흔한 키로는 안 나왔습니다 — 실제 키를 입력해 다시 시도하세요." : "어떤 설정으로도 읽을 수 있는 평문이 안 나왔습니다 (키·인코딩·방식 재확인)."; return; }
     o.appendChild(el("div", "solve-text", "✓ 평문이 나온 설정 " + r.length + "개 (점수순):"));
     r.forEach((c) => {
       const row = el("div", "solve-item");
@@ -2272,7 +2351,7 @@
   const STORE = "cipherInspector.v3";
   function save() {
     try {
-      const o = { lastSrc, ivPrepend: $("ivPrepend").checked, auto: $("auto").checked, optDecode: $("optDecode").checked, optXor: $("optXor").checked, optDict: $("optDict").checked, optDecrypt: $("optDecrypt").checked, optBrute: $("optBrute").checked };
+      const o = { lastSrc, ivPrepend: $("ivPrepend").checked, auto: $("auto").checked, optDecode: $("optDecode").checked, optXor: $("optXor").checked, optDict: $("optDict").checked, optDecrypt: $("optDecrypt").checked, optCommon: $("optCommon").checked, optBrute: $("optBrute").checked };
       FIELDS.forEach((f) => (o[f] = $(f).value));
       localStorage.setItem(STORE, JSON.stringify(o));
     } catch (e) {}
@@ -2283,7 +2362,7 @@
       FIELDS.forEach((f) => { if (o[f] != null && $(f)) $(f).value = o[f]; });
       if (o.ivPrepend) $("ivPrepend").checked = true;
       if (o.auto === false) $("auto").checked = false;
-      ["optDecode", "optXor", "optDict", "optDecrypt"].forEach((id) => { if (o[id] === false) $(id).checked = false; });
+      ["optDecode", "optXor", "optDict", "optDecrypt", "optCommon"].forEach((id) => { if (o[id] === false) $(id).checked = false; });
       if (o.optBrute) $("optBrute").checked = true;
       if (o.lastSrc) lastSrc = o.lastSrc;
     } catch (e) {}
@@ -2333,7 +2412,7 @@
     $("pt").addEventListener("input", () => { if (!suppress) schedule("pt"); });
     $("ct").addEventListener("input", () => { if (suppress) return; analyzeNow(); if (!$("optDecrypt") || $("optDecrypt").checked) schedule("ct"); clearTimeout(histTimer); histTimer = setTimeout(() => pushHistory($("ct").value), 1500); });
     $("histBtn").onclick = () => { const h = $("histList"); if (h.classList.contains("hidden")) { renderHistory(); h.classList.remove("hidden"); } else h.classList.add("hidden"); };
-    ["optDecode", "optXor", "optDict", "optDecrypt", "optBrute"].forEach((id) => { $(id).onchange = () => { analyzeNow(); if ($("optDecrypt").checked) schedule("ct"); save(); }; });
+    ["optDecode", "optXor", "optDict", "optDecrypt", "optCommon", "optBrute"].forEach((id) => { $(id).onchange = () => { analyzeNow(); if ($("optDecrypt").checked) schedule("ct"); save(); }; });
     $("hexDump").onclick = () => { const o = $("hexOut"); o.classList.remove("hidden"); const u = getInputBytes(); o.textContent = u.length ? hexdump(u, 512) : "위에 입력이 없습니다."; };
     $("mtpRun").onclick = runCribDrag;
     $("magicCheat").onclick = showCheat;
@@ -2341,6 +2420,35 @@
 
     $("exBtn").onclick = () => { $("ct").value = btoa('{"user":"admin","role":"guest","exp":1699999999}'); $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
     $("clrCt").onclick = () => { $("ct").value = ""; $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
+    $("pasteBtn").onclick = async () => {
+      try {
+        const txt = await navigator.clipboard.readText();
+        if (txt) { $("ct").value = txt; $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); }
+        else $("ctStatus").className = "pstatus idle", $("ctStatus").textContent = "클립보드가 비어 있습니다.";
+      } catch (e) { $("ctStatus").className = "pstatus bad"; $("ctStatus").textContent = "클립보드 접근 불가 — 직접 붙여넣기(Ctrl/⌘+V) 하세요."; }
+    };
+    // 파일 드래그&드롭 → 바이트를 hex로 읽어 기존 파이프라인에 투입
+    (function () {
+      const t = $("ct");
+      const stop = (e) => { e.preventDefault(); e.stopPropagation(); };
+      ["dragenter", "dragover"].forEach((ev) => t.addEventListener(ev, (e) => { stop(e); t.classList.add("flash"); }));
+      ["dragleave", "dragend"].forEach((ev) => t.addEventListener(ev, (e) => { stop(e); t.classList.remove("flash"); }));
+      t.addEventListener("drop", (e) => {
+        stop(e); t.classList.remove("flash");
+        const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!f) return;
+        const r = new FileReader();
+        r.onload = () => {
+          const u8 = new Uint8Array(r.result);
+          const printable = u8.reduce((n, b) => n + (b === 9 || b === 10 || b === 13 || (b >= 32 && b <= 126) ? 1 : 0), 0);
+          // 텍스트 파일이면 그대로, 바이너리면 hex로
+          t.value = (u8.length && printable / u8.length > 0.9) ? new TextDecoder("utf-8", { fatal: false }).decode(u8) : u8ToHex(u8);
+          $("ctStatus").className = "pstatus idle"; $("ctStatus").textContent = "파일 '" + f.name + "' · " + u8.length.toLocaleString() + "B 읽음 → 자동 분석";
+          t.dispatchEvent(new Event("input", { bubbles: true }));
+        };
+        r.readAsArrayBuffer(f.slice(0, 1 << 20)); // 최대 1MB
+      });
+    })();
 
     $("wordlist").onchange = async (e) => {
       const f = e.target.files && e.target.files[0];
