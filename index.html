@@ -152,6 +152,13 @@
   .hash-v { flex:1; min-width:0; color:var(--ink); word-break:break-all; }
   .hash-row .a-apply { flex:none; }
   input[type=range] { width:100%; accent-color:var(--accent); margin:4px 0 0; }
+  .tracelog { font-family:var(--mono); font-size:11.5px; line-height:1.6; background:#15181d; color:#c9d1d9; border-radius:var(--radius-sm); padding:11px 13px; max-height:240px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+  .tracelog:empty::before { content:"입력을 넣으면 자동 분석·복호화 과정이 여기 기록됩니다."; color:#6e7681; }
+  .tracelog .tl { display:block; }
+  .tracelog .tt { color:#6e7681; }
+  .tracelog .tl.ok .tm { color:#3fb950; }
+  .tracelog .tl.warn .tm { color:#d29922; }
+  .tracelog .tl.step .tm { color:#58a6ff; }
 
   /* Analysis — visual */
   .analysis { margin-top:16px; padding:16px; background:var(--fill); border:1px solid var(--line); border-radius:var(--radius-sm); }
@@ -242,6 +249,14 @@
       <div class="magic hidden" id="magicOut"></div>
       <div class="analysis hidden" id="analysis"></div>
     </div>
+
+    <details class="card details" id="traceBox" open>
+      <summary class="details-sum">
+        <span class="sum-title">실행 로그 (콘솔)</span>
+        <span class="sum-hint">자동 분석·복호화가 왜 이렇게 흘렀는지 단계별 기록</span>
+      </summary>
+      <div class="details-body"><div id="traceLog" class="tracelog"></div></div>
+    </details>
 
     <details class="card details" id="aesBox">
       <summary class="details-sum">
@@ -411,6 +426,25 @@
             <button class="btn ghost" id="rsaRun" type="button" style="flex:none;">RSA 복호화</button>
           </div>
           <div class="a-prev hidden" id="rsaOut"></div>
+        </div>
+
+        <div class="field">
+          <label for="kpText">Known-plaintext 키/키스트림 복구 (스트림·XOR)</label>
+          <input id="kpText" type="text" placeholder="알고 있는 평문 조각 (hex는 0x.. 접두)" autocomplete="off" spellcheck="false" />
+          <div class="input-group" style="margin-top:8px;">
+            <input id="kpOff" type="text" placeholder="오프셋(바이트, 기본 0)" style="max-width:170px;" autocomplete="off" />
+            <button class="btn ghost" id="kpRun" type="button" style="flex:none;">키 복구</button>
+          </div>
+          <div class="a-prev hidden" id="kpOut"></div>
+        </div>
+
+        <div class="field" style="margin:0;">
+          <label for="poText">패딩 오라클 시뮬레이터 (AES-CBC / PKCS7 · 교육용)</label>
+          <div class="input-group">
+            <input id="poText" type="text" placeholder="시연할 평문 (비우면 기본값)" autocomplete="off" spellcheck="false" />
+            <button class="btn ghost" id="poRun" type="button" style="flex:none;">공격 시연</button>
+          </div>
+          <div class="a-prev hidden" id="poOut"></div>
         </div>
 
         <div class="field">
@@ -755,6 +789,17 @@
     return { kind: "hex", text: hexPrefix(u8, Math.min(u8.length, 32)) + (u8.length > 32 ? " …" : "") };
   }
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  let traceT0 = 0;
+  function traceClear() { traceT0 = performance.now(); const l = $("traceLog"); if (l) l.textContent = ""; }
+  function trace(msg, level) {
+    const box = $("traceLog"); if (!box) return;
+    const t = ((performance.now() - traceT0) / 1000).toFixed(2);
+    const line = el("div", "tl " + (level || "info"));
+    line.appendChild(el("span", "tt", "[" + ("     " + t).slice(-6) + "s] "));
+    line.appendChild(el("span", "tm", msg));
+    box.appendChild(line); box.scrollTop = box.scrollHeight;
+    while (box.childNodes.length > 250) box.removeChild(box.firstChild);
+  }
   function pctOf(score) { return Math.max(2, Math.min(99, Math.round(score * 100))); }
   function confColor(pct) { return pct >= 75 ? "#1c7146" : pct >= 55 ? "#2b4a7e" : "#828994"; }
   function entLabel(e) { return e >= 0.85 ? "높음" : e >= 0.6 ? "보통" : "낮음"; }
@@ -855,7 +900,11 @@
   let anaSeq = 0, lastCands = null, lastSolve = null, aesPlain = null;
   async function analyzeNow() {
     const seq = ++anaSeq;
+    traceClear();
+    const inp = $("ct").value.trim();
+    if (inp) trace("입력 감지 · " + inp.length + "자", "step");
     const cands = analyze($("ct").value);
+    if (inp) trace("형식 분석 → " + (cands && cands[0] ? cands[0].label : "판정 없음"));
     renderAnalysis(cands);
     lastCands = cands;
     updateTools();
@@ -1036,9 +1085,10 @@
     const doDecode = !$("optDecode") || $("optDecode").checked;
     lastSolve = doDecode ? await autoSolve($("ct").value, { xor: !$("optXor") || $("optXor").checked }) : [];
     if (seq !== anaSeq) return;
+    if ($("ct").value.trim()) { if (lastSolve && lastSolve.length) trace("자동 해독 성공 → " + ["입력"].concat(lastSolve[0].recipe, ["결과"]).join(" → "), "ok"); else if (doDecode) trace("자동 해독 → 읽을 수 있는 결과 없음"); }
     renderFinal();
     // 암호문/해시 + 사전 로드됨 → 자동으로 대입/크랙까지
-    if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && (looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value) || isJwtHS($("ct").value))) scheduleDict();
+    if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && (looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value) || isJwtHS($("ct").value))) { trace("사전 로드됨 + 대상 감지 → 자동 대입/크랙 시작", "step"); scheduleDict(); }
   }
   function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase", rc4: "RC4", des: "DES", "3des": "Triple DES" }; return m[$("scheme").value] || "복호화"; }
   function pretty(o) { try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); } }
@@ -1158,6 +1208,7 @@
 
     // 1) 키로 복호화된 평문 (최우선)
     if (aesPlain != null && aesPlain !== "") {
+      trace("키로 복호화 성공 → 평문 표시 (" + schemeLabel() + ")", "ok");
       box.classList.add("ok");
       box.appendChild(el("div", "magic-t", "🔓 복호화된 평문 · " + schemeLabel()));
       box.appendChild(el("div", "magic-out", aesPlain.length > 4000 ? aesPlain.slice(0, 4000) + " …" : aesPlain));
@@ -1166,7 +1217,7 @@
     }
     // 1.5) 토큰(JWT/JWE/UUID/시크릿/해시 등) — 디코드 또는 판정 표시
     const topTok = lastCands && lastCands[0];
-    if (topTok && topTok.token) { renderTokenFinal(box, topTok); return; }
+    if (topTok && topTok.token) { trace("토큰/포맷 판정 → " + topTok.label); renderTokenFinal(box, topTok); return; }
     // 2) 자동 해독 — 여러 디코드 조합을 시도한 평문 후보들
     if (lastSolve && lastSolve.length) {
       const best = lastSolve[0];
@@ -1197,6 +1248,7 @@
     const hx = hashByLen(ct);
     const isCipher = (top && top.info && (/암호문|바이너리/.test(top.info.catLabel) || top.info.align)) || !!hx;
     if (isCipher && !$("key").value.trim()) {
+      trace("암호문/해시 추정 · 키 또는 사전 필요", "warn");
       box.classList.add("hint");
       box.appendChild(el("div", "magic-t", "🔒 " + (hx ? (hx.name + " 해시 또는 암호문으로 보입니다") : "암호문으로 보입니다 — 평문을 보려면 키가 필요합니다")));
       box.appendChild(el("div", "magic-sub", hx ? "가능성 A) 해시 → .txt 사전으로 크랙 · 가능성 B) 대칭암호 → 키 입력" : "방식·키·IV를 입력하면 복호화된 평문이 여기 바로 표시됩니다. 비밀번호를 모르면 사전 크랙을 쓰세요."));
@@ -1215,7 +1267,7 @@
 
   /* ---------- 사전 공격 (Passphrase 무차별 대입) ---------- */
   let wordlistText = null, dictSeq = 0, dictTimer = null;
-  function dstat(cls, text) { const e = $("dictStatus"); e.className = "pstatus " + cls; e.textContent = text; }
+  function dstat(cls, text) { const e = $("dictStatus"); e.className = "pstatus " + cls; e.textContent = text; if (cls === "ok" || cls === "bad") trace("사전/크랙 → " + text, cls === "ok" ? "ok" : "warn"); }
   function tryPass(ct, word) {
     try {
       const wa = CryptoJS.AES.decrypt(ct, word);
@@ -1478,6 +1530,72 @@
       o.textContent = "✓ " + used + "\n" + pt;
     } catch (e) { o.textContent = "실패: " + (e.message || e); }
   }
+  function knownPlaintext() {
+    const o = $("kpOut"); o.classList.remove("hidden"); o.textContent = "";
+    const ct = getInputBytes();
+    const ptStr = $("kpText").value;
+    const pt = /^0x/i.test(ptStr) ? hexToU8(ptStr.slice(2)) : new TextEncoder().encode(ptStr);
+    const off = parseInt($("kpOff").value, 10) || 0;
+    if (!ct.length) { o.textContent = "위에 암호문을 넣으세요."; return; }
+    if (!pt || !pt.length) { o.textContent = "알고 있는 평문을 입력하세요."; return; }
+    if (off + pt.length > ct.length) { o.textContent = "평문+오프셋이 암호문보다 깁니다."; return; }
+    const ks = new Uint8Array(pt.length);
+    for (let i = 0; i < pt.length; i++) ks[i] = ct[off + i] ^ pt[i];
+    trace("known-plaintext → 키스트림 " + ks.length + "B 복구", "step");
+    let period = null;
+    for (let L = 1; L <= ks.length >> 1; L++) { let ok = true; for (let i = L; i < ks.length; i++) if (ks[i] !== ks[i % L]) { ok = false; break; } if (ok) { period = L; break; } }
+    o.appendChild(el("div", "solve-text", "키스트림(hex): " + u8ToHex(ks)));
+    if (period) {
+      const key = ks.slice(0, period), t = new TextDecoder("utf-8", { fatal: false }).decode(xorBytes(ct, key));
+      o.appendChild(el("div", "solve-text", "반복키 감지 · 키 길이 " + period + " · 키(hex): " + u8ToHex(key)));
+      const b = el("div", "magic-out"); b.style.marginTop = "8px"; b.textContent = t.length > 3000 ? t.slice(0, 3000) + " …" : t; o.appendChild(b);
+      trace("반복키 " + period + "B 복구 → 전체 XOR 복호화 완료", "ok");
+    } else {
+      const region = new TextDecoder("utf-8", { fatal: false }).decode(xorBytes(ct.slice(off, off + ks.length), ks));
+      o.appendChild(el("div", "solve-text", "비반복 키스트림 — 같은 오프셋의 다른 메시지를 이 키스트림으로 복호화할 수 있습니다. 알려진 구간: " + JSON.stringify(region)));
+      trace("비반복 키스트림(부분) 복구", "info");
+    }
+  }
+  async function paddingOracleSim() {
+    const o = $("poOut"); o.classList.remove("hidden"); o.textContent = "무작위 키로 암호화 후, 오라클(패딩 유효성)만으로 복원 시연 중…";
+    let ptStr = ($("poText").value.trim() || "패딩 오라클로 복구된 비밀 token=abcd1234").slice(0, 47);
+    const key = CryptoJS.lib.WordArray.random(16), iv = CryptoJS.lib.WordArray.random(16);
+    const ct = waToU8(CryptoJS.AES.encrypt(CryptoJS.enc.Utf8.parse(ptStr), key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }).ciphertext), ivU = waToU8(iv);
+    const blocks = ct.length / 16;
+    trace("패딩오라클: 평문 " + ptStr.length + "자 → CBC 암호화 " + ct.length + "B(" + blocks + "블록). 공격 로직은 키를 안 씀", "step");
+    let calls = 0;
+    const oracle = (prev, block) => {
+      calls++;
+      const p = waToU8(CryptoJS.AES.decrypt({ ciphertext: u8ToWA(block) }, key, { iv: u8ToWA(prev), mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.NoPadding }));
+      const last = p[p.length - 1]; if (last < 1 || last > 16) return false;
+      for (let i = 0; i < last; i++) if (p[p.length - 1 - i] !== last) return false;
+      return true;
+    };
+    const recovered = new Uint8Array(ct.length), t0 = performance.now();
+    for (let bi = 0; bi < blocks; bi++) {
+      const target = ct.slice(bi * 16, bi * 16 + 16), prevReal = bi === 0 ? ivU : ct.slice((bi - 1) * 16, bi * 16), inter = new Uint8Array(16);
+      for (let pad = 1; pad <= 16; pad++) {
+        const pos = 16 - pad; let found = false;
+        for (let g = 0; g < 256; g++) {
+          const prev = new Uint8Array(16);
+          for (let j = pos + 1; j < 16; j++) prev[j] = inter[j] ^ pad;
+          prev[pos] = g;
+          if (oracle(prev, target)) { if (pad === 1 && pos > 0) { const p2 = prev.slice(); p2[pos - 1] ^= 0xff; if (!oracle(p2, target)) continue; } inter[pos] = g ^ pad; found = true; break; }
+        }
+        if (!found) trace("블록 " + bi + " pos " + pos + " 복구 실패", "warn");
+        await new Promise((r) => setTimeout(r, 0));
+      }
+      for (let j = 0; j < 16; j++) recovered[bi * 16 + j] = inter[j] ^ prevReal[j];
+      trace("블록 " + (bi + 1) + "/" + blocks + " 복구 완료 · 누적 오라클 " + calls.toLocaleString() + "회", "ok");
+    }
+    let out = recovered; const padLen = out[out.length - 1]; if (padLen >= 1 && padLen <= 16) out = out.slice(0, out.length - padLen);
+    const rec = new TextDecoder("utf-8", { fatal: false }).decode(out), secs = ((performance.now() - t0) / 1000).toFixed(2);
+    o.textContent = "";
+    o.appendChild(el("div", "solve-text", "복구된 평문 (키 없이, 오라클 " + calls.toLocaleString() + "회 · " + secs + "s):"));
+    const b = el("div", "magic-out"); b.textContent = rec; o.appendChild(b);
+    o.appendChild(el("div", "solve-text", rec === ptStr ? "✓ 원본과 일치 — CBC 패딩 오라클이 존재하면 키 없이 평문 전체가 복원됩니다." : "부분 복구."));
+    trace("패딩오라클 시연 완료 · " + (rec === ptStr ? "원본과 일치" : "부분"), rec === ptStr ? "ok" : "warn");
+  }
   function shareState() {
     const st = {}; ["scheme", "key", "keyFmt", "iv", "ivFmt", "ctFmt", "ct"].forEach((f) => (st[f] = $(f).value));
     try { return "#s=" + btoa(unescape(encodeURIComponent(JSON.stringify(st)))); } catch (e) { return ""; }
@@ -1718,6 +1836,7 @@
       const input = $("ct").value.trim();
       if (!input) { setVal($("pt"), ""); status("pt", "idle", ""); status("ct", "idle", ""); aesPlain = null; renderFinal(); return; }
       if (!$("key").value.trim()) { setVal($("pt"), ""); status("ct", "idle", ""); status("pt", "idle", "🔑 키를 입력하면 여기서 복호화됩니다 (형식 분석은 위 자동)"); aesPlain = null; renderFinal(); return; }
+      trace("키로 복호화 시도 → " + schemeLabel(), "step");
       try {
         const r = await decrypt(scheme, input);
         setVal($("pt"), r.text);
@@ -1727,6 +1846,7 @@
         aesPlain = r.text; renderFinal();
       } catch (e) {
         status("pt", "bad", errMsg(scheme, e));
+        trace("복호화 실패 → " + errMsg(scheme, e).slice(0, 44), "warn");
         aesPlain = null; renderFinal();
       }
     }
@@ -1860,6 +1980,8 @@
     $("jwtVerify").onclick = verifyJwt;
     $("rsaRun").onclick = rsaDecrypt;
     $("autoCfg").onclick = runAutoCfg;
+    $("kpRun").onclick = knownPlaintext;
+    $("poRun").onclick = paddingOracleSim;
     $("shareLink").onclick = () => { const h = shareState(); if (h) { history.replaceState(null, "", location.pathname + h); copy(location.href, $("shareLink")); } };
     $("exportOpenssl").onclick = () => { const o = $("exportOut"); o.classList.remove("hidden"); o.textContent = opensslCode(); };
     $("exportPython").onclick = () => { const o = $("exportOut"); o.classList.remove("hidden"); o.textContent = pythonCode(); };
