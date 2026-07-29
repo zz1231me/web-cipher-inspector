@@ -2,7 +2,7 @@
 
 웹 모의해킹·점검용 **AES 암복호화 워크벤치**. 단일 HTML 파일로, 별도 설치 없이 브라우저에서 바로 동작합니다.
 
-**▶ 라이브 데모: https://zz1231me.github.io/cipher-inspector/**
+**▶ 라이브 데모: https://zz1231me.github.io/web-cipher-inspector/**
 
 대상 앱의 JS에서 찾은 키·IV·방식을 입력하면, Burp 등에서 복사한 암호문을 즉석에서 복호화하고 변조한 평문을 다시 암호화(재전송용)할 수 있습니다.
 
