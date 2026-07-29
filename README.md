@@ -10,6 +10,9 @@
 
 ## 주요 기능
 
+- **🪄 자동 디코드 (Magic)** — 붙여넣으면 CyberChef의 Magic처럼 가장 그럴듯한 디코드 레시피를 자동으로 찾아 연쇄 적용하고 결과를 보여줍니다. Base64 · Base64url · Hex · Base32 · URL · gzip/zlib를 재귀적으로 관통 (예: `Base64 → gzip → JSON`).
+- **📊 시각적 종합 분석** — 암호문을 넣으면 "무엇인지 · 어떻게 구성됐는지 · 신뢰도(%)"를 아이콘 판정 + 신뢰도 막대 + 레이어 파이프라인 + 엔트로피 게이지 + 블록 정렬/선두 바이트 타일로 시각화. 매직넘버(gzip·PNG·PDF·DER·ZIP…), 토큰(JWT·JWE·PASETO·Fernet), 시크릿(Stripe·GitHub·AWS·bcrypt…), 해시(MD5·SHA·ObjectId), UUID/ULID 자동 식별.
+- **🔑 사전 공격** — `.txt` 단어목록을 올려 OpenSSL/CryptoJS passphrase 암호문을 무차별 대입 복호화. 발견 시 비밀번호와 평문을 자동 표시.
 - **양방향 라이브 변환** — 평문 ⇄ 암호문이 한 화면에. 한쪽에 입력·붙여넣기하면 반대쪽이 자동으로 채워집니다(자동 변환 토글 가능).
 - **지원 방식**
   - AES-CBC (key + IV)

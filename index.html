@@ -97,17 +97,57 @@
   .pstatus.ok { color:var(--ok); } .pstatus.bad { color:var(--warn); } .pstatus.idle { color:var(--ink3); }
   textarea.flash { border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
 
-  /* Analysis */
-  .analysis { margin:10px 2px 0; padding:12px 14px; background:var(--fill); border-radius:14px; font-family:var(--mono); font-size:11.5px; line-height:1.55; }
-  .anaTitle { font-family:var(--sans); font-size:11.5px; font-weight:600; color:var(--ink2); margin-bottom:9px; }
-  .anaRow { display:flex; align-items:baseline; gap:8px; padding:3px 0; flex-wrap:wrap; }
-  .anaLabel { color:var(--ink); font-weight:600; white-space:nowrap; }
-  .anaTags { color:var(--ink2); flex:1; min-width:0; }
-  .anaTags b { color:var(--accent); font-weight:600; }
-  .anaApply { margin-left:auto; font-family:var(--sans); font-size:11px; font-weight:560; color:var(--accent); background:var(--card); border:1px solid var(--line); border-radius:980px; padding:3px 12px; cursor:pointer; white-space:nowrap; }
-  .anaApply:hover { border-color:var(--accent); }
-  .anaPreview { margin-top:9px; padding:9px 11px; background:var(--card); border:1px solid var(--line-2); border-radius:10px; font-size:11px; color:var(--ink2); white-space:pre-wrap; word-break:break-all; max-height:130px; overflow:auto; }
-  .anaPvLabel { color:var(--accent); font-weight:600; }
+  /* Dictionary attack */
+  .dict-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  #wordlist { flex:1; min-width:180px; font-family:var(--sans); font-size:12.5px; color:var(--ink2); background:var(--fill); border:1px solid transparent; border-radius:12px; padding:9px 12px; cursor:pointer; }
+  #wordlist::file-selector-button { font-family:var(--sans); font-size:12px; font-weight:560; color:var(--accent); background:var(--card); border:1px solid var(--line); border-radius:980px; padding:5px 13px; margin-right:11px; cursor:pointer; }
+  #dictRun { flex:none; }
+
+  /* Magic — 자동 디코드 */
+  .magic { margin-top:20px; padding:18px; background:linear-gradient(180deg,#eef5ff,#f4f6fb); border:1px solid rgba(0,113,227,.18); border-radius:16px; }
+  .magic-t { font-size:12px; font-weight:600; color:var(--accent); margin-bottom:12px; letter-spacing:.01em; }
+  .magic-recipe { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:12px; }
+  .magic-out { padding:12px 14px; background:var(--card); border:1px solid var(--line-2); border-radius:11px; font-family:var(--mono); font-size:12.5px; color:var(--ink); white-space:pre-wrap; word-break:break-all; max-height:220px; overflow:auto; line-height:1.55; }
+  .magic-actions { margin-top:11px; display:flex; gap:8px; flex-wrap:wrap; }
+
+  /* Analysis — visual */
+  .analysis { margin-top:20px; padding:20px; background:var(--fill); border-radius:16px; }
+  .a-title { font-size:11px; font-weight:600; color:var(--ink3); letter-spacing:.04em; text-transform:uppercase; margin-bottom:15px; }
+
+  .a-verdict { display:flex; align-items:center; gap:14px; }
+  .a-icon { width:48px; height:48px; flex:none; border-radius:13px; background:var(--card); display:flex; align-items:center; justify-content:center; font-size:25px; box-shadow:0 1px 3px rgba(0,0,0,.07); }
+  .a-vtext { flex:1; min-width:0; }
+  .a-vlabel { font-size:18px; font-weight:600; color:var(--ink); letter-spacing:-.015em; }
+  .a-vsub { font-size:12.5px; color:var(--ink2); margin-top:3px; font-family:var(--mono); word-break:break-all; line-height:1.4; }
+  .a-conf { flex:none; width:130px; }
+  .a-conf-pct { font-size:22px; font-weight:660; color:var(--ink); font-variant-numeric:tabular-nums; text-align:right; line-height:1; }
+  .a-conf-lbl { font-size:10.5px; color:var(--ink3); text-align:right; margin-top:3px; }
+  .a-bar { height:6px; border-radius:6px; background:rgba(0,0,0,.09); overflow:hidden; margin-top:7px; }
+  .a-bar > i { display:block; height:100%; border-radius:6px; transition:width .45s cubic-bezier(.2,.8,.2,1); }
+
+  .a-section { margin-top:18px; }
+  .a-section-t { font-size:11px; font-weight:600; color:var(--ink3); letter-spacing:.03em; text-transform:uppercase; margin-bottom:9px; }
+  .a-pipe { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
+  .a-step { font-family:var(--mono); font-size:12px; font-weight:600; color:var(--ink); background:var(--card); border:1px solid var(--line-2); border-radius:9px; padding:6px 12px; }
+  .a-step:last-child { color:#fff; background:var(--accent); border-color:transparent; }
+  .a-arrow { color:var(--ink3); font-size:12px; }
+
+  .a-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .a-tile { background:var(--card); border:1px solid var(--line-2); border-radius:11px; padding:11px 13px; }
+  .a-tile-k { font-size:10px; color:var(--ink3); text-transform:uppercase; letter-spacing:.04em; }
+  .a-tile-v { font-size:13px; font-weight:600; color:var(--ink); margin-top:4px; font-family:var(--mono); word-break:break-all; }
+  .a-meter { height:5px; border-radius:5px; background:rgba(0,0,0,.09); margin-top:8px; overflow:hidden; }
+  .a-meter > i { display:block; height:100%; background:linear-gradient(90deg,#34c759,#0071e3); border-radius:5px; }
+
+  .a-other { display:flex; align-items:center; gap:11px; padding:5px 0; }
+  .a-other-n { font-size:12.5px; font-weight:600; color:var(--ink); width:104px; flex:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .a-other .a-bar { flex:1; margin:0; }
+  .a-other-p { font-size:11.5px; color:var(--ink2); width:32px; text-align:right; font-variant-numeric:tabular-nums; }
+
+  .a-apply { font-family:var(--sans); font-size:11px; font-weight:560; color:var(--accent); background:var(--card); border:1px solid var(--line); border-radius:980px; padding:4px 13px; cursor:pointer; white-space:nowrap; }
+  .a-apply:hover { border-color:var(--accent); background:#fff; }
+  .a-prev { margin-top:9px; padding:10px 12px; background:var(--card); border:1px solid var(--line-2); border-radius:10px; font-family:var(--mono); font-size:11.5px; color:var(--ink2); white-space:pre-wrap; word-break:break-all; max-height:150px; overflow:auto; line-height:1.5; }
+  .a-prev b { color:var(--accent); font-weight:600; }
 
   .foot { font-size:12px; color:var(--ink3); text-align:center; margin:24px 8px 0; line-height:1.7; }
   .foot b { color:var(--ink2); font-weight:600; }
@@ -118,6 +158,9 @@
     .card { padding:20px; }
     .cols-2 { grid-template-columns:1fr; gap:0; }
     .convert { grid-template-columns:1fr; gap:20px; }
+    .a-verdict { flex-wrap:wrap; }
+    .a-conf { width:100%; margin-top:4px; }
+    .a-conf-pct, .a-conf-lbl { text-align:left; }
   }
 </style>
 </head>
@@ -203,6 +246,15 @@
         </div>
       </div>
 
+      <div class="field" id="dictField">
+        <label for="wordlist">사전 공격 · Passphrase 무차별 대입 (.txt 단어목록)</label>
+        <div class="dict-row">
+          <input type="file" id="wordlist" accept=".txt,text/plain" />
+          <button class="btn ghost" id="dictRun" type="button">사전 공격 실행</button>
+        </div>
+        <div class="pstatus idle" id="dictStatus"></div>
+      </div>
+
       <div class="hint" id="hint"></div>
 
       <div class="divider"></div>
@@ -236,10 +288,12 @@
             <button class="chip" id="copyCt" type="button">복사</button>
           </div>
           <textarea id="ct" placeholder="암호문을 붙여넣으면 자동으로 복호화됩니다"></textarea>
-          <div class="analysis hidden" id="analysis"></div>
           <div class="pstatus idle" id="ctStatus"></div>
         </div>
       </div>
+
+      <div class="magic hidden" id="magicOut"></div>
+      <div class="analysis hidden" id="analysis"></div>
     </div>
 
     <p class="foot">
@@ -367,6 +421,19 @@
     return null;
   }
 
+  function magicCat(name) {
+    if (/압축|GZIP|zlib|BZIP2|Zstandard|XZ|LZ4|compress/.test(name)) return { icon: "📦", label: "압축 데이터" };
+    if (/이미지|PNG|JPEG|GIF|TIFF|BMP|WebP/.test(name)) return { icon: "🖼️", label: "이미지" };
+    if (/ZIP|RAR|7-Zip|JAR|OOXML/.test(name)) return { icon: "🗜️", label: "아카이브" };
+    if (/DER|PEM|인증서|키/.test(name)) return { icon: "📜", label: "인증서/키" };
+    if (/실행|PE|ELF|Mach-O|WebAssembly|Java/.test(name)) return { icon: "⚙️", label: "실행/바이너리" };
+    if (/PDF/.test(name)) return { icon: "📕", label: "PDF 문서" };
+    if (/MP4|MOV|OGG|RIFF|AVI/.test(name)) return { icon: "🎬", label: "미디어" };
+    if (/MP3|FLAC|WAV/.test(name)) return { icon: "🎵", label: "오디오" };
+    if (/SQLite|PCAP|CBOR/.test(name)) return { icon: "🗃️", label: "데이터 파일" };
+    return { icon: "🔢", label: "바이너리" };
+  }
+
   function classifyBytes(u8) {
     const n = u8.length, freq = new Array(256).fill(0);
     for (let i = 0; i < n; i++) freq[u8[i]]++;
@@ -375,36 +442,33 @@
     let printable = 0;
     for (let i = 0; i < n; i++) { const b = u8[i]; if (b === 9 || b === 10 || b === 13 || (b >= 32 && b <= 126)) printable++; }
     printable /= n || 1;
-    const Hn = H / (Math.log2(Math.min(256, n || 1)) || 1); // 길이로 정규화(0~1)
+    const entropyN = H / (Math.log2(Math.min(256, n || 1)) || 1); // 길이로 정규화(0~1)
     const salted = n >= 16 && [0x53,0x61,0x6c,0x74,0x65,0x64,0x5f,0x5f].every((b, i) => u8[i] === b);
     const magic = identifyMagic(u8);
-    const tags = []; let bonus = 0;
     const textLike = printable > 0.97;
+    let icon = "🔢", catLabel = "바이너리", subtitle = "", bonus = 0;
 
     // 1) 정체 — 무엇인지
-    if (salted) { tags.push("OpenSSL Salted__ → Passphrase 방식"); bonus += 0.28; }
-    else if (magic) { tags.push(magic); bonus += 0.24; }
+    if (salted) { icon = "🔑"; catLabel = "OpenSSL 암호문"; subtitle = "Salted__ → Passphrase 방식"; bonus += 0.28; }
+    else if (magic) { const mc = magicCat(magic); icon = mc.icon; catLabel = mc.label; subtitle = magic; bonus += 0.24; }
     else if (textLike) {
       let s = "";
       try { s = new TextDecoder("utf-8", { fatal: false }).decode(u8).trim(); } catch (e) {}
-      tags.push(/^[\[{]/.test(s) ? "JSON 평문(암호문 아님?)"
-        : /^<\??[a-zA-Z!]/.test(s) ? "XML/HTML 평문"
-        : "ASCII 텍스트(인코딩 한 겹 더?)");
-    } else if (Hn > 0.9) { tags.push("고엔트로피 → 암호문/난수 추정"); bonus += 0.14; }
-    else { tags.push("바이너리(부분 구조)"); }
+      if (/^[\[{]/.test(s)) { icon = "🧾"; catLabel = "JSON 평문"; subtitle = "암호문 아님"; }
+      else if (/^<\??[a-zA-Z!]/.test(s)) { icon = "📄"; catLabel = "XML/HTML"; subtitle = "암호문 아님"; }
+      else { icon = "📄"; catLabel = "텍스트"; subtitle = "인코딩이 한 겹 더 있을 수 있음"; }
+    } else if (entropyN > 0.9) { icon = "🔒"; catLabel = "암호문/난수 추정"; subtitle = "고엔트로피"; bonus += 0.14; }
+    else { icon = "🔢"; catLabel = "바이너리"; subtitle = "부분적 구조"; }
 
-    // 2) 크기·블록 정렬 — 어떤 방식일지
+    // 2) 블록 정렬 — 어떤 방식일지 (암호문/바이너리에서만)
+    let align = null;
     if (!salted && !magic && !textLike) {
-      if (n % 16 === 0) { tags.push(n + "B · 16의 배수(AES CBC/ECB)"); bonus += 0.06; }
-      else if (n > 16 && (n - 16) % 16 === 0) tags.push(n + "B · 태그 16B 제외 시 정렬(GCM 추정)");
-      else if (n % 8 === 0) tags.push(n + "B · 8의 배수(DES/3DES/Blowfish)");
-      else tags.push(n + "B · 블록 비정렬(스트림 CTR/GCM/ChaCha?)");
-      tags.push("선두: " + hexPrefix(u8, 8));
-    } else {
-      tags.push(n + "B");
-      if (!textLike) tags.push("선두: " + hexPrefix(u8, 8));
+      if (n % 16 === 0) { align = { txt: "16의 배수 · AES CBC/ECB", ok: true }; bonus += 0.06; }
+      else if (n > 16 && (n - 16) % 16 === 0) align = { txt: "태그 16B 제외 시 정렬 · GCM 추정", ok: true };
+      else if (n % 8 === 0) align = { txt: "8의 배수 · DES/3DES/Blowfish", ok: true };
+      else align = { txt: "블록 비정렬 · 스트림 CTR/GCM/ChaCha", ok: false };
     }
-    return { tags, bonus, salted };
+    return { n, entropyN, printable, magic, salted, icon, catLabel, subtitle, align, lead: hexPrefix(u8, 8), bonus };
   }
   function u8ToHex(u8) { let s = ""; for (let i = 0; i < u8.length; i++) s += u8[i].toString(16).padStart(2, "0"); return s; }
   function b32ToU8(s) {
@@ -450,33 +514,38 @@
     { re: /^-----BEGIN /, n: "PEM 블록(키/인증서)" },
     { re: /^(ssh-(rsa|ed25519|dss)|ecdsa-sha2-) /, n: "SSH 공개키" },
   ];
+  function pushTok(cands, label, score, icon, subtitle) {
+    cands.push({ label: label, score: score, apply: null, token: { icon: icon, subtitle: subtitle } });
+  }
   function tokenPass(s0, noSpace, cands) {
-    for (const t of TOKENS) if (t.re.test(s0)) { cands.push({ label: t.n, score: 0.94, tags: ["민감 토큰/키 패턴 · AES 암호문 아님"], apply: null }); return true; }
-
+    for (const t of TOKENS) if (t.re.test(s0)) {
+      const icon = /해시/.test(t.n) ? "#️⃣" : /(PEM|SSH|인증서)/.test(t.n) ? "📜" : "🔑";
+      pushTok(cands, t.n, 0.94, icon, "민감 토큰 · 키 · 해시 패턴 — AES 암호문 아님"); return true;
+    }
     if (/^v[1-4]\.(local|public)\./.test(s0)) {
-      cands.push({ label: "PASETO 토큰", score: 0.92, tags: [s0.split(".").slice(0, 2).join(".") + " · 플랫폼 무관 보안 토큰"], apply: null }); return true;
+      pushTok(cands, "PASETO 토큰", 0.92, "🎫", s0.split(".").slice(0, 2).join(".") + " · 플랫폼 무관 보안 토큰"); return true;
     }
     const parts = noSpace.split(".");
     if (parts.length === 3 && parts[0] && parts.every((p) => /^[A-Za-z0-9\-_]*$/.test(p))) {
-      const tags = ["header.payload.signature"];
-      try { const h = JSON.parse(new TextDecoder().decode(b64ToU8(parts[0]))); if (h.alg) tags.push("alg=" + h.alg + (h.typ ? " typ=" + h.typ : "")); } catch (e) {}
-      cands.push({ label: "JWT", score: 0.93, tags: tags, apply: null }); return true;
+      let sub = "header.payload.signature";
+      try { const h = JSON.parse(new TextDecoder().decode(b64ToU8(parts[0]))); if (h.alg) sub += " · alg=" + h.alg + (h.typ ? " typ=" + h.typ : ""); } catch (e) {}
+      pushTok(cands, "JWT", 0.93, "🎫", sub); return true;
     }
     if (parts.length === 5 && parts.every((p) => /^[A-Za-z0-9\-_]*$/.test(p))) {
-      const tags = ["5분할 · header.key.iv.ciphertext.tag"];
-      try { const h = JSON.parse(new TextDecoder().decode(b64ToU8(parts[0]))); if (h.alg) tags.push("alg=" + h.alg + (h.enc ? " enc=" + h.enc : "")); } catch (e) {}
-      cands.push({ label: "JWE (암호화된 JWT)", score: 0.9, tags: tags, apply: null }); return true;
+      let sub = "header.key.iv.ciphertext.tag (5분할)";
+      try { const h = JSON.parse(new TextDecoder().decode(b64ToU8(parts[0]))); if (h.alg) sub += " · alg=" + h.alg + (h.enc ? " enc=" + h.enc : ""); } catch (e) {}
+      pushTok(cands, "JWE · 암호화된 JWT", 0.9, "🎫", sub); return true;
     }
     if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(s0)) {
-      cands.push({ label: "UUID", score: 0.9, tags: ["v" + s0[14] + " · 식별자(암호문 아님)"], apply: null }); return true;
+      pushTok(cands, "UUID", 0.9, "🆔", "v" + s0[14] + " 식별자 — 암호문 아님"); return true;
     }
     if (/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/.test(s0)) {
-      cands.push({ label: "ULID", score: 0.85, tags: ["Crockford base32 26자 · 시간정렬 식별자"], apply: null }); return true;
+      pushTok(cands, "ULID", 0.85, "🆔", "Crockford base32 26자 · 시간정렬 식별자"); return true;
     }
     // Fernet: base64url 디코드 후 첫 바이트 0x80
     if (/^[A-Za-z0-9\-_]+=*$/.test(noSpace)) {
       const u = b64ToU8(noSpace);
-      if (u && u.length >= 25 && u[0] === 0x80) cands.push({ label: "Fernet 토큰", score: 0.82, tags: ["v0x80 · AES-128-CBC + HMAC-SHA256"], apply: null });
+      if (u && u.length >= 25 && u[0] === 0x80) pushTok(cands, "Fernet 토큰", 0.82, "🔒", "v0x80 · AES-128-CBC + HMAC-SHA256");
     }
     return false;
   }
@@ -487,9 +556,10 @@
     const noSpace = s0.replace(/\s+/g, ""), cands = [];
     const add = (label, u8, base, apply, pre) => {
       if (!u8 || u8.length === 0) return;
-      const c = classifyBytes(u8);
-      const ap = c.salted ? Object.assign({ scheme: "pass", ctFmt: "Base64" }, apply) : apply;
-      cands.push({ label, score: base + c.bonus, tags: (pre ? [pre] : []).concat(c.tags), apply: ap, bytes: u8 });
+      const info = classifyBytes(u8);
+      if (pre) info.subtitle = pre + (info.subtitle ? " · " + info.subtitle : "");
+      const ap = info.salted ? Object.assign({ scheme: "pass", ctFmt: "Base64" }, apply) : apply;
+      cands.push({ label, score: base + info.bonus, apply: ap, bytes: u8, info });
     };
 
     // 토큰·시크릿·ID 포맷 (결정적이면 여기서 종료)
@@ -530,8 +600,8 @@
       let pr = 0;
       for (let i = 0; i < s0.length; i++) { const x = s0.charCodeAt(i); if (x === 9 || x === 10 || x === 13 || (x >= 32 && x <= 126)) pr++; }
       if (pr / s0.length > 0.95)
-        return [{ label: "평문/텍스트", score: 0.4, tags: [s0.length + "자 · 인코딩 아님 — 그대로 평문이거나 특수 형식"], apply: null }];
-      return [{ label: "알 수 없음", score: 0.2, tags: ["Hex·Base64 규칙에 안 맞음 — 다른 인코딩 가능성"], apply: null }];
+        return [{ label: "평문/텍스트", score: 0.4, apply: null, token: { icon: "📄", subtitle: s0.length + "자 · 인코딩 아님 (그대로 평문이거나 특수 형식)" } }];
+      return [{ label: "알 수 없음", score: 0.2, apply: null, token: { icon: "❓", subtitle: "Hex·Base64 규칙에 맞지 않음 — 다른 인코딩 가능성" } }];
     }
     cands.sort((a, b) => b.score - a.score);
     return cands.slice(0, 4);
@@ -546,45 +616,92 @@
     }
     return { kind: "hex", text: hexPrefix(u8, Math.min(u8.length, 32)) + (u8.length > 32 ? " …" : "") };
   }
-  function appendPreview(box, label, text) {
-    const d = document.createElement("div"); d.className = "anaPreview";
-    const b = document.createElement("span"); b.className = "anaPvLabel"; b.textContent = label + ": ";
-    d.appendChild(b); d.appendChild(document.createTextNode(text));
-    box.appendChild(d);
-  }
+  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
+  function pctOf(score) { return Math.max(2, Math.min(99, Math.round(score * 100))); }
+  function confColor(pct) { return pct >= 75 ? "#34c759" : pct >= 55 ? "#0071e3" : "#8a8a8e"; }
+  function entLabel(e) { return e >= 0.85 ? "높음" : e >= 0.6 ? "보통" : "낮음"; }
+  function confBar(pct) { const bar = el("div", "a-bar"); const fill = el("i"); fill.style.width = pct + "%"; fill.style.background = confColor(pct); bar.appendChild(fill); return bar; }
+  function tile(k, v) { const t = el("div", "a-tile"); t.appendChild(el("div", "a-tile-k", k)); t.appendChild(el("div", "a-tile-v", v)); return t; }
+  function prevBox(label, text) { const d = el("div", "a-prev"); const b = el("b"); b.textContent = label + ": "; d.appendChild(b); d.appendChild(document.createTextNode(text)); return d; }
+
   function renderAnalysis(cands, deep) {
     const box = $("analysis");
     if (!cands) { box.classList.add("hidden"); box.textContent = ""; return; }
     box.classList.remove("hidden");
     box.textContent = "";
-    const title = document.createElement("div");
-    title.className = "anaTitle"; title.textContent = "🔍 종합 분석 (인코딩 · 매직넘버 · 추정)";
-    box.appendChild(title);
-    const rank = ["①", "②", "③", "④"];
-    cands.forEach((c, i) => {
-      const conf = c.score >= 0.85 ? "매우 높음" : c.score >= 0.68 ? "높음" : c.score >= 0.52 ? "보통" : "낮음";
-      const row = document.createElement("div"); row.className = "anaRow";
-      const lab = document.createElement("span"); lab.className = "anaLabel";
-      lab.textContent = (rank[i] || "") + " " + c.label;
-      const tags = document.createElement("span"); tags.className = "anaTags";
-      tags.textContent = c.tags.join(" · ") + " · ";
-      const b = document.createElement("b"); b.textContent = conf; tags.appendChild(b);
-      row.appendChild(lab); row.appendChild(tags);
-      if (c.apply) {
-        const btn = document.createElement("button");
-        btn.className = "anaApply"; btn.type = "button"; btn.textContent = "적용";
-        btn.onclick = () => applyCandidate(c.apply);
-        row.appendChild(btn);
-      }
-      box.appendChild(row);
-    });
-    // 최상위 후보가 텍스트로 풀리면 미리보기
-    const top = cands[0];
-    if (top && top.bytes) {
-      const pv = previewOf(top.bytes);
-      if (pv.kind === "text") appendPreview(box, "미리보기", pv.text);
+    box.appendChild(el("div", "a-title", "🔎 암호문 분석"));
+
+    const top = cands[0], info = top.info, tok = top.token, pct = pctOf(top.score);
+
+    // ── 판정 (verdict) ──
+    const v = el("div", "a-verdict");
+    v.appendChild(el("div", "a-icon", info ? info.icon : tok ? tok.icon : "❓"));
+    const vt = el("div", "a-vtext");
+    vt.appendChild(el("div", "a-vlabel", info ? info.catLabel : top.label));
+    const vsub = info ? (top.label + (info.subtitle ? " · " + info.subtitle : "")) : (tok ? tok.subtitle : "");
+    if (vsub) vt.appendChild(el("div", "a-vsub", vsub));
+    v.appendChild(vt);
+    const cf = el("div", "a-conf");
+    cf.appendChild(el("div", "a-conf-pct", pct + "%"));
+    cf.appendChild(el("div", "a-conf-lbl", "신뢰도"));
+    cf.appendChild(confBar(pct));
+    v.appendChild(cf);
+    box.appendChild(v);
+
+    // 최상위 후보에 적용 액션
+    if (top.apply) {
+      const sec = el("div", "a-section");
+      const b = el("button", "a-apply", "이 형식으로 설정 적용 →"); b.type = "button";
+      b.onclick = () => applyCandidate(top.apply);
+      sec.appendChild(b); box.appendChild(sec);
     }
-    if (deep) appendPreview(box, deep.title, deep.text);
+
+    if (info) {
+      // ── 구성 · 레이어 (pipeline) ──
+      const steps = [];
+      top.label.split("→").forEach((s) => steps.push(s.trim()));
+      steps.push(info.n + " B");
+      if (deep) { steps.push(deep.fmt + " 해제"); steps.push(deep.innerLen + " B"); if (deep.innerCat) steps.push(deep.innerCat); }
+      else steps.push(info.catLabel);
+      const sec = el("div", "a-section"); sec.appendChild(el("div", "a-section-t", "구성 · 레이어"));
+      const pipe = el("div", "a-pipe");
+      steps.forEach((s, i) => { if (i) pipe.appendChild(el("span", "a-arrow", "→")); pipe.appendChild(el("span", "a-step", s)); });
+      sec.appendChild(pipe); box.appendChild(sec);
+
+      // ── 특성 (stats) ──
+      const sec2 = el("div", "a-section"); sec2.appendChild(el("div", "a-section-t", "특성"));
+      const stats = el("div", "a-stats");
+      stats.appendChild(tile("길이", info.n + " bytes"));
+      const et = el("div", "a-tile");
+      et.appendChild(el("div", "a-tile-k", "엔트로피"));
+      et.appendChild(el("div", "a-tile-v", entLabel(info.entropyN) + " · " + (info.entropyN * 8).toFixed(1) + " bit/byte"));
+      const m = el("div", "a-meter"); const mi = el("i"); mi.style.width = Math.round(info.entropyN * 100) + "%"; m.appendChild(mi); et.appendChild(m);
+      stats.appendChild(et);
+      if (info.align) stats.appendChild(tile("블록 정렬", (info.align.ok ? "✓ " : "○ ") + info.align.txt));
+      stats.appendChild(tile("선두 바이트", info.lead));
+      sec2.appendChild(stats); box.appendChild(sec2);
+
+      // ── 미리보기 ──
+      const pv = previewOf(top.bytes);
+      if (pv.kind === "text") box.appendChild(prevBox("디코딩 미리보기", pv.text));
+      if (deep && deep.text) box.appendChild(prevBox("📦 " + deep.fmt + " 해제 결과", deep.text));
+    }
+
+    // ── 다른 가능성 ──
+    const others = cands.slice(1);
+    if (others.length) {
+      const sec = el("div", "a-section"); sec.appendChild(el("div", "a-section-t", "다른 가능성"));
+      others.forEach((c) => {
+        const p = pctOf(c.score);
+        const row = el("div", "a-other");
+        row.appendChild(el("div", "a-other-n", c.label));
+        row.appendChild(confBar(p));
+        row.appendChild(el("div", "a-other-p", p + "%"));
+        if (c.apply) { const b = el("button", "a-apply", "적용"); b.type = "button"; b.onclick = () => applyCandidate(c.apply); row.appendChild(b); }
+        sec.appendChild(row);
+      });
+      box.appendChild(sec);
+    }
   }
   function applyCandidate(apply) {
     if (!apply) return;
@@ -602,6 +719,7 @@
     const seq = ++anaSeq;
     const cands = analyze($("ct").value);
     renderAnalysis(cands);
+    renderMagic(seq);
     // 자동 레이어 관통: 최상위 후보가 gzip/zlib면 압축 해제해 내부까지 표시
     const top = cands && cands[0];
     if (!top || !top.bytes || typeof DecompressionStream === "undefined") return;
@@ -614,10 +732,117 @@
       const buf = await new Response(new Blob([u]).stream().pipeThrough(ds)).arrayBuffer();
       if (seq !== anaSeq) return; // 입력이 바뀌었으면 폐기
       const inner = new Uint8Array(buf);
-      const magic = identifyMagic(inner);
+      const ic = classifyBytes(inner);
       const pv = previewOf(inner, 240);
-      renderAnalysis(cands, { title: "📦 " + fmt + " 해제 → " + inner.length + "B" + (magic ? " · " + magic : ""), text: pv.text });
+      renderAnalysis(cands, { fmt: fmt, innerLen: inner.length, innerCat: ic.catLabel, text: pv.text });
     } catch (e) {}
+  }
+
+  /* ---------- Magic 자동 디코드 (CyberChef Magic 방식) ---------- */
+  function printableRatio(u8) {
+    let p = 0;
+    for (let i = 0; i < u8.length; i++) { const b = u8[i]; if (b === 9 || b === 10 || b === 13 || (b >= 32 && b <= 126)) p++; }
+    return u8.length ? p / u8.length : 0;
+  }
+  function printableStr(s) {
+    if (!s) return false;
+    let p = 0;
+    for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c === 9 || c === 10 || c === 13 || (c >= 32 && c <= 126) || c >= 160) p++; }
+    return p / s.length > 0.9;
+  }
+  // 입력을 가장 그럴듯한 디코드 체인으로 자동 관통해 최종 결과(주로 텍스트)를 반환
+  async function bake(input) {
+    let cur = (input || "").trim();
+    const chain = [];
+    for (let step = 0; step < 7 && cur != null; step++) {
+      if (typeof cur === "string") {
+        const s = cur.trim();
+        if (!s) break;
+        if (/%[0-9a-fA-F]{2}/.test(s)) { try { const d = decodeURIComponent(s); if (d && d !== s) { chain.push("URL 디코드"); cur = d; continue; } } catch (e) {} }
+        const ns = s.replace(/\s+/g, "");
+        let u = null, op = null;
+        if (ns.length >= 8) {
+          if (/^[A-Za-z0-9+/]+={0,2}$/.test(ns) && ns.length % 4 === 0) { u = b64ToU8(ns); op = "Base64 디코드"; }
+          else if (/^[A-Za-z0-9\-_]+={0,2}$/.test(ns) && /[-_]/.test(ns)) { u = b64ToU8(ns); op = "Base64url 디코드"; }
+          else if (looksHex(ns)) { u = hexToU8(ns); op = "Hex 디코드"; }
+          else if (/^[A-Z2-7]+=*$/.test(ns) && ns.length % 8 === 0) { u = b32ToU8(ns); op = "Base32 디코드"; }
+        }
+        if (u && u.length) { chain.push(op); cur = u; continue; }
+        break;
+      } else {
+        const u = cur;
+        const fmt = (u[0] === 0x1f && u[1] === 0x8b) ? "gzip" : (u[0] === 0x78 && [0x01, 0x5e, 0x9c, 0xda].indexOf(u[1]) >= 0) ? "deflate" : null;
+        if (fmt && typeof DecompressionStream !== "undefined") {
+          try {
+            const buf = await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream(fmt))).arrayBuffer();
+            chain.push(fmt + " 압축 해제"); cur = new Uint8Array(buf); continue;
+          } catch (e) {}
+        }
+        if (printableRatio(u) > 0.9) {
+          const t = new TextDecoder("utf-8", { fatal: false }).decode(u);
+          const nt = t.trim().replace(/\s+/g, "");
+          const again = (/^[A-Za-z0-9+/]+={0,2}$/.test(nt) && nt.length % 4 === 0 && nt.length >= 24) || (looksHex(nt) && nt.length >= 24);
+          cur = t; if (again) continue; else break;
+        }
+        break;
+      }
+    }
+    return { chain, value: cur, isText: typeof cur === "string" };
+  }
+  async function renderMagic(seq) {
+    const box = $("magicOut");
+    const r = await bake($("ct").value);
+    if (seq !== anaSeq) return;
+    // 실제로 1회 이상 디코드해서 텍스트가 나온 경우에만 표시
+    if (!r.chain.length || !r.isText || !r.value.trim()) { box.classList.add("hidden"); box.textContent = ""; return; }
+    box.classList.remove("hidden"); box.textContent = "";
+    box.appendChild(el("div", "magic-t", "🪄 자동 디코드 (Magic) — 가장 그럴듯한 레시피"));
+    const rec = el("div", "magic-recipe");
+    ["입력"].concat(r.chain, ["결과"]).forEach((s, i) => { if (i) rec.appendChild(el("span", "a-arrow", "→")); rec.appendChild(el("span", "a-step", s)); });
+    box.appendChild(rec);
+    box.appendChild(el("div", "magic-out", r.value.length > 4000 ? r.value.slice(0, 4000) + " …" : r.value));
+    const act = el("div", "magic-actions");
+    const cp = el("button", "a-apply", "결과 복사"); cp.type = "button"; cp.onclick = () => copy(r.value, cp);
+    const toPt = el("button", "a-apply", "평문칸에 넣기"); toPt.type = "button";
+    toPt.onclick = () => { setVal($("pt"), r.value); status("pt", "ok", "← 자동 디코드 결과 (" + r.value.length.toLocaleString() + "자)"); };
+    act.appendChild(cp); act.appendChild(toPt); box.appendChild(act);
+  }
+
+  /* ---------- 사전 공격 (Passphrase 무차별 대입) ---------- */
+  let wordlistText = null;
+  function dstat(cls, text) { const e = $("dictStatus"); e.className = "pstatus " + cls; e.textContent = text; }
+  function tryPass(ct, word) {
+    try {
+      const wa = CryptoJS.AES.decrypt(ct, word);
+      if (!wa || wa.sigBytes <= 0) return null;
+      const t = wa.toString(enc.Utf8);
+      if (t && printableStr(t)) return t;
+    } catch (e) {}
+    return null;
+  }
+  async function runDict() {
+    if (!window.CryptoJS) return;
+    const ct = $("ct").value.trim();
+    if (!ct) { dstat("bad", "먼저 암호문을 입력하세요"); return; }
+    if (!wordlistText) { dstat("bad", "먼저 .txt 사전 파일을 선택하세요"); return; }
+    const words = wordlistText.split(/\r?\n/).map((w) => w.replace(/\s+$/, "")).filter((w) => w.length);
+    if (!words.length) { dstat("bad", "사전이 비어 있습니다"); return; }
+    $("dictRun").disabled = true;
+    let found = null;
+    for (let i = 0; i < words.length; i++) {
+      const t = tryPass(ct, words[i]);
+      if (t) { found = { w: words[i], t: t }; break; }
+      if ((i & 511) === 0) { dstat("idle", i.toLocaleString() + " / " + words.length.toLocaleString() + " 시도 중…"); await new Promise((r) => setTimeout(r, 0)); }
+    }
+    $("dictRun").disabled = false;
+    if (found) {
+      $("scheme").value = "pass"; syncFields();
+      $("key").value = found.w;
+      lastSrc = "ct"; save(); convert("ct");
+      dstat("ok", "✓ 비밀번호 발견: \"" + found.w + "\"");
+    } else {
+      dstat("bad", "✕ 사전 " + words.length.toLocaleString() + "개에서 찾지 못함 (OpenSSL/CryptoJS passphrase 기준)");
+    }
   }
 
   /* ---------- 복호화 (ct → pt) ---------- */
@@ -850,6 +1075,14 @@
 
     $("pt").addEventListener("input", () => { if (!suppress) schedule("pt"); });
     $("ct").addEventListener("input", () => { if (suppress) return; analyzeNow(); schedule("ct"); });
+
+    $("wordlist").onchange = async (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (!f) return;
+      try { wordlistText = await f.text(); const n = wordlistText.split(/\r?\n/).filter((w) => w.trim()).length; dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 로드됨"); }
+      catch (err) { dstat("bad", "파일을 읽지 못했습니다"); }
+    };
+    $("dictRun").onclick = runDict;
 
     $("doEnc").onclick = () => { lastSrc = "pt"; convert("pt"); };
     $("doDec").onclick = () => { lastSrc = "ct"; convert("ct"); };
