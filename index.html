@@ -186,7 +186,7 @@
   .devconsole.collapsed .dc-grid { display:none; }
   .devconsole.collapsed .dc-head { border-bottom:none; }
   .tracelog { font-family:var(--mono); font-size:11px; line-height:1.55; background:#0a0a0a; color:#c2c2b6; padding:7px 11px; height:128px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
-  @media (max-width:1000px){ .devconsole { position:fixed; left:0; right:0; bottom:0; z-index:60; } .dc-grid { grid-template-columns:1fr; max-height:34vh; overflow:auto; } .tracelog { height:auto; min-height:56px; max-height:16vh; } }
+  @media (max-width:1000px){ .devconsole { position:fixed; left:0; right:0; bottom:0; z-index:60; } .dc-grid { grid-template-columns:1fr; max-height:26vh; overflow:auto; } .tracelog { height:auto; min-height:40px; max-height:10vh; } .dc-pane-h { padding:2px 10px; } }
   .tracelog:empty::before { content:"대기 중…"; color:#5a5a52; }
   .tracelog .tl { display:block; }
   .tracelog .tt { color:#6e7681; }
@@ -1448,6 +1448,10 @@
   function xorBytes(u8, keyBytes) { const r = new Uint8Array(u8.length); for (let i = 0; i < u8.length; i++) r[i] = u8[i] ^ keyBytes[i % keyBytes.length]; return r; }
   function hamming(a, b) { let d = 0, n = Math.min(a.length, b.length); for (let i = 0; i < n; i++) { let x = a[i] ^ b[i]; while (x) { d += x & 1; x >>= 1; } } return d; }
   var ENFREQ = { 32: 15, 101: 12.7, 116: 9.1, 97: 8.2, 111: 7.5, 105: 7, 110: 6.7, 115: 6.3, 104: 6.1, 114: 6, 100: 4.3, 108: 4, 99: 2.8, 117: 2.8, 109: 2.4, 119: 2.4, 102: 2.2, 103: 2, 121: 2, 112: 1.9, 98: 1.5, 118: 1, 107: 0.8, 106: 0.15, 120: 0.15, 113: 0.1, 122: 0.07 };
+  // 영문 판정 (ROT/Atbash): 사전 단어 매칭 + 카이제곱 (짧은 텍스트 오판 방지)
+  var WORDSET = new Set("the be to of and a in that have it for not on with he as you do at this but his by from they we her she or an will my one all would there their what so up if about who which go me when make can like time no just know take into year good some them see other than then now look only come over think back after use how work first way even want any give day us hello world message secret password flag admin user login test name email attack cipher decrypt encrypt hi yes no ok error true false root pass".split(" "));
+  function wordHits(s) { const ws = s.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 2); let h = 0; for (const w of ws) if (WORDSET.has(w)) h++; return h; }
+  function chiEnglish(s) { const cnt = new Array(26).fill(0); let n = 0; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); const lc = (c >= 65 && c <= 90) ? c + 32 : c; if (lc >= 97 && lc <= 122) { cnt[lc - 97]++; n++; } } if (n < 1) return 1e9; let x = 0; for (let i = 0; i < 26; i++) { const e = ENGF[i] * n / 100; x += (cnt[i] - e) * (cnt[i] - e) / (e || 0.01); } return x / n; }
   function charScore(c) {
     const lc = (c >= 65 && c <= 90) ? c + 32 : c; // 대문자→소문자 빈도 매핑
     if (ENFREQ[lc] != null) return ENFREQ[lc];
@@ -1535,11 +1539,12 @@
       if (!st.bytes) {
         const s = st.v.trim();
         if (st.recipe.length && printableStrRatio(s) > 0.85 && s.length >= 2) results.push({ recipe: st.recipe, text: s, score: scoreAll(s) });
-        // ROT/Caesar 자동: 알파벳 위주면 최적 시프트를 후보로
+        // ROT/Caesar 자동: 사전 단어 매칭 우선(짧은 텍스트), 긴 텍스트는 카이제곱 보조
         if (opts.xor && /[A-Za-z]/.test(s) && printableStrRatio(s) > 0.95 && s.length >= 4 && st.recipe.indexOf("ROT") < 0 && !st.recipe.some((x) => x.indexOf("ROT") === 0)) {
-          let best = null; const base = englishScore(s);
-          for (let n = 1; n < 26; n++) { const r = rotStr(s, n); const es = englishScore(r); if (!best || es > best.es) best = { n: n, r: r, es: es }; }
-          if (best && best.es > base + 12) results.push({ recipe: st.recipe.concat(best.n === 13 ? "ROT13" : "ROT-" + best.n), text: best.r, score: scoreAll(best.r) + 8 });
+          const letters = (s.match(/[A-Za-z]/g) || []).length, baseHits = wordHits(s), baseChi = chiEnglish(s); let best = null;
+          for (let n = 1; n < 26; n++) { const r = rotStr(s, n); const hits = wordHits(r), c = chiEnglish(r), sc = hits * 100 - c; if (!best || sc > best.sc) best = { n: n, r: r, hits: hits, c: c, sc: sc }; }
+          // 원문(변환 안 함)보다 확실히 더 영어다울 때만 제안 → 이미 평문인 입력에 오탐 방지
+          if (best && ((best.hits >= 1 && best.hits > baseHits) || (letters >= 24 && best.c < 1.0 && best.c < baseChi * 0.7))) results.push({ recipe: st.recipe.concat(best.n === 13 ? "ROT13" : "ROT-" + best.n), text: best.r, score: scoreAll(best.r) + 8 });
         }
         const ns = s.replace(/\s+/g, "");
         if (/%[0-9a-fA-F]{2}/.test(s)) { try { const d = decodeURIComponent(s); if (d && d !== s) enq(d, false, st.recipe.concat("URL")); } catch (e) {} }
@@ -1575,8 +1580,9 @@
         if (opts.xor && st.recipe.indexOf("ROT47") < 0 && /[!-~]/.test(s) && printableStrRatio(s) > 0.95 && s.length >= 4 && /[A-Za-z]/.test(s)) {
           const r = rot47(s); if (englishScore(r) > englishScore(s) + 14) results.push({ recipe: st.recipe.concat("ROT47"), text: r, score: scoreAll(r) + 4 });
         }
-        if (opts.xor && st.recipe.indexOf("Atbash") < 0 && (s.match(/[A-Za-z]/g) || []).length >= 6 && printableStrRatio(s) > 0.9) {
-          const a = atbash(s); if (englishScore(a) > englishScore(s) + 14) results.push({ recipe: st.recipe.concat("Atbash"), text: a, score: scoreAll(a) + 4 });
+        if (opts.xor && st.recipe.indexOf("Atbash") < 0 && (s.match(/[A-Za-z]/g) || []).length >= 4 && printableStrRatio(s) > 0.9) {
+          const a = atbash(s), letters = (s.match(/[A-Za-z]/g) || []).length;
+          if ((wordHits(a) >= 1 && wordHits(a) > wordHits(s)) || (letters >= 24 && chiEnglish(a) < 1.0 && chiEnglish(a) < chiEnglish(s) * 0.7)) results.push({ recipe: st.recipe.concat("Atbash"), text: a, score: scoreAll(a) + 4 });
         }
         // Morse
         if (st.recipe.indexOf("Morse") < 0) { const m = morseDecode(s); if (m && m.length >= 2) results.push({ recipe: st.recipe.concat("Morse"), text: m, score: scoreAll(m) + 6 }); }
@@ -2653,9 +2659,10 @@
       res.note = (res.note ? res.note + " · " : "") + "태그 검증 성공" + (parsed.auto ? " · " + parsed.fmt + " 감지" : "");
       return res;
     }
-    // CBC / CTR / ECB
+    // CBC / CTR / CFB / OFB / ECB
     const key = parseWA($("key").value, $("keyFmt").value);
-    const cfg = { mode: modeObj(scheme), padding: padObj($("padding").value) };
+    const stream = scheme === "ctr" || scheme === "cfb" || scheme === "ofb"; // 스트림 모드는 패딩 없음
+    const cfg = { mode: modeObj(scheme), padding: stream ? CryptoJS.pad.NoPadding : padObj($("padding").value) };
     const needsIv = scheme !== "ecb";
     const parsed = parseCipher(input);
     let ctWA = parsed.wa;
@@ -2701,7 +2708,8 @@
       return { text: fmtBytes(u8ToWA(ctU8)), note: "태그 포함" + (prepend ? " · nonce 결합" : "") };
     }
     const key = parseWA($("key").value, $("keyFmt").value);
-    const cfg = { mode: modeObj(scheme), padding: padObj($("padding").value) };
+    const stream = scheme === "ctr" || scheme === "cfb" || scheme === "ofb";
+    const cfg = { mode: modeObj(scheme), padding: stream ? CryptoJS.pad.NoPadding : padObj($("padding").value) };
     const needsIv = scheme !== "ecb";
     const prepend = needsIv && $("ivPrepend").checked;
     let ivWA = null;
@@ -2798,7 +2806,7 @@
     const keyOnly = isPass || isFernet;
     const isAead = scheme === "gcm" || scheme === "chacha";
     const needsIv = ["cbc", "ctr", "cfb", "ofb", "gcm", "chacha", "des", "3des"].indexOf(scheme) >= 0;
-    const hasPad  = ["cbc", "ecb", "cfb", "ofb", "des", "3des"].indexOf(scheme) >= 0;
+    const hasPad  = ["cbc", "ecb", "des", "3des"].indexOf(scheme) >= 0; // 스트림(CTR/CFB/OFB)은 패딩 없음
 
     $("ivField").classList.toggle("hidden", keyOnly || !needsIv);
     $("tagField").classList.toggle("hidden", !isAead);
