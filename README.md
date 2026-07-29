@@ -10,7 +10,9 @@
 
 ## 주요 기능
 
-- **자동 해독 (Auto-solve)** — 붙여넣으면 여러 디코드 조합을 폭넓게 탐색(BFS)해 읽을 수 있는 평문 후보를 순위로 제시. Base64 · Base64url · Hex · Base32 · Base58 · URL · gzip/zlib에 더해 **단일바이트 XOR 브루트포스**와 **Caesar/ROT-N**까지 자동 시도 (예: `Hex → XOR 0x42 → 평문`, `Base64 → gzip → JSON`). 입력 카드의 체크박스로 각 자동작업을 켜고 끕니다.
+- **자동 해독 (Auto-solve)** — 붙여넣으면 여러 디코드 조합을 폭넓게 탐색(BFS)해 읽을 수 있는 평문 후보를 순위로 제시. Base64 · Base64url · Hex · Base32 · Base58 · Ascii85 · URL · Quoted-printable · HTML엔티티 · gzip/zlib/deflate에 더해 **단일바이트/반복키 XOR**·**Caesar/ROT-N/ROT47**·**Atbash**·**Vigenère 자동해독**까지 자동 시도 (예: `Hex → XOR 0x42 → 평문`, `Base64 → gzip → JSON`). 입력 카드의 체크박스로 각 자동작업을 켜고 끕니다.
+- **문자코드·이스케이프·고전암호·레거시 인코딩** — 구분자 있는 문자코드 열(10/16/8/2진), `\xHH \uHHHH \u{..} \OOO` 이스케이프, A1Z26, Morse, NATO 포네틱, Base45(RFC 9285), uuencode, Punycode(`xn--`), 제로폭 문자 스테가노까지 자동 인식·복원.
+- **입력 자동화 · 결과 저장** — 클립보드 가져오기 버튼, 암호문 칸에 **파일 드래그&드롭**(바이트를 읽어 자동 분석), 결과를 `.txt/.bin`으로 **파일 저장**. 키 미입력 시 흔한 상수 키(all-zero·`YELLOW SUBMARINE`·`password`…)를 자동 대입하는 **흔한 키 자동시도**.
 - **사전 공격 · 크랙** — `.txt` 단어목록으로 OpenSSL/CryptoJS passphrase, 현재 방식(AES 키), 그리고 **bcrypt · argon2 해시**(hash-wasm)를 자동 대입. 암호문/해시를 넣고 목록만 올리면 자동 실행.
 - **추가 암호 · 도구** — AES 외 RC4 · DES · Triple DES. 고급 도구에 해시 8종(MD5·SHA1·SHA256·SHA512 + SHA3·RIPEMD160·BLAKE2b·CRC32), XOR(키/브루트), ROT-N, 공유 링크(#s=), openssl/python 코드 내보내기.
 - **반복키 XOR 자동해독** — Vigenère식 반복키 XOR을 정규화 해밍(Friedman)으로 키 길이 추정 후 열별 문자빈도 브루트로 자동 복원. 자동 해독에 편입 + 고급 도구 수동 버튼.

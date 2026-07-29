@@ -791,6 +791,157 @@
     });
   }
 
+  /* ================= 추가 디코더 (문자코드·이스케이프·고전암호·레거시) ================= */
+  const utf8Enc = (cp) => { const b = []; const e = new TextEncoder().encode(String.fromCodePoint(cp)); for (const x of e) b.push(x); return b; };
+  // 구분자 있는 문자코드 열 → 진법별 바이트 해석 (10/16/8/2진)
+  function charcodeVariants(s) {
+    const t = s.trim();
+    if (!/[\s,;]/.test(t)) return [];
+    const toks = t.split(/[\s,;]+/).filter((x) => x.length);
+    if (toks.length < 2) return [];
+    const out = [];
+    if (toks.every((x) => /^[01]{4,8}$/.test(x))) { const b = toks.map((x) => parseInt(x, 2)); if (b.every((v) => v <= 255)) out.push(["2진 문자코드", Uint8Array.from(b)]); }
+    if (toks.every((x) => /^0?x?[0-9A-Fa-f]{1,2}$/.test(x)) && /[a-fA-Fx]/.test(t)) { const b = toks.map((x) => parseInt(x.replace(/^0x/i, ""), 16)); out.push(["16진 문자코드", Uint8Array.from(b)]); }
+    if (toks.every((x) => /^\d{1,3}$/.test(x))) { const b = toks.map((x) => parseInt(x, 10)); if (b.every((v) => v <= 255)) out.push(["10진 문자코드", Uint8Array.from(b)]); }
+    if (toks.every((x) => /^[0-7]{1,3}$/.test(x))) { const b = toks.map((x) => parseInt(x, 8)); if (b.every((v) => v <= 255)) out.push(["8진 문자코드", Uint8Array.from(b)]); }
+    return out;
+  }
+  // A1Z26 (1..26 ↔ 알파벳)
+  function a1z26(s) {
+    const toks = s.trim().split(/[\s,;.\-_]+/).filter((x) => x.length);
+    if (toks.length < 2 || !toks.every((x) => /^\d{1,2}$/.test(x))) return null;
+    const n = toks.map((x) => +x); if (!n.every((v) => v >= 1 && v <= 26)) return null;
+    return n.map((v) => String.fromCharCode(96 + v)).join("");
+  }
+  // \xHH \uHHHH \u{H..} \OOO \n\t 등 이스케이프 → 바이트(UTF-8)
+  function decodeEscapes(s) {
+    const out = []; let i = 0; const map = { n: 10, t: 9, r: 13, "0": 0, b: 8, f: 12, v: 11, "\\": 92, "'": 39, "\"": 34, "/": 47 };
+    while (i < s.length) {
+      if (s[i] === "\\" && i + 1 < s.length) {
+        const c = s[i + 1];
+        if (c === "x" && /^[0-9A-Fa-f]{2}/.test(s.substr(i + 2, 2))) { out.push(parseInt(s.substr(i + 2, 2), 16)); i += 4; continue; }
+        if (c === "u" && s[i + 2] === "{") { const m = s.slice(i + 3).match(/^([0-9A-Fa-f]{1,6})\}/); if (m) { utf8Enc(parseInt(m[1], 16)).forEach((b) => out.push(b)); i += 3 + m[1].length + 1; continue; } }
+        if (c === "u" && /^[0-9A-Fa-f]{4}/.test(s.substr(i + 2, 4))) {
+          let cp = parseInt(s.substr(i + 2, 4), 16); i += 6;
+          if (cp >= 0xd800 && cp <= 0xdbff && s.substr(i, 2) === "\\u" && /^[0-9A-Fa-f]{4}/.test(s.substr(i + 2, 4))) { const lo = parseInt(s.substr(i + 2, 4), 16); if (lo >= 0xdc00 && lo <= 0xdfff) { cp = 0x10000 + ((cp - 0xd800) << 10) + (lo - 0xdc00); i += 6; } }
+          utf8Enc(cp).forEach((b) => out.push(b)); continue;
+        }
+        if (/[0-7]/.test(c)) { const m = s.slice(i + 1).match(/^[0-7]{1,3}/); const v = parseInt(m[0], 8); if (v <= 255) { out.push(v); i += 1 + m[0].length; continue; } }
+        if (map[c] != null) { out.push(map[c]); i += 2; continue; }
+      }
+      const cp = s.codePointAt(i); utf8Enc(cp).forEach((b) => out.push(b)); i += cp > 0xffff ? 2 : 1;
+    }
+    return Uint8Array.from(out);
+  }
+  // ROT47 (전 ASCII 그래픽 문자 회전)
+  function rot47(s) { return s.replace(/[!-~]/g, (c) => String.fromCharCode(33 + (c.charCodeAt(0) - 33 + 47) % 94)); }
+  // Atbash (a↔z, A↔Z)
+  function atbash(s) { return s.replace(/[a-z]/g, (c) => String.fromCharCode(219 - c.charCodeAt(0))).replace(/[A-Z]/g, (c) => String.fromCharCode(155 - c.charCodeAt(0))); }
+  // Morse → 텍스트
+  const MORSE = { ".-": "A", "-...": "B", "-.-.": "C", "-..": "D", ".": "E", "..-.": "F", "--.": "G", "....": "H", "..": "I", ".---": "J", "-.-": "K", ".-..": "L", "--": "M", "-.": "N", "---": "O", ".--.": "P", "--.-": "Q", ".-.": "R", "...": "S", "-": "T", "..-": "U", "...-": "V", ".--": "W", "-..-": "X", "-.--": "Y", "--..": "Z", "-----": "0", ".----": "1", "..---": "2", "...--": "3", "....-": "4", ".....": "5", "-....": "6", "--...": "7", "---..": "8", "----.": "9", ".-.-.-": ".", "--..--": ",", "..--..": "?", "-.-.--": "!", "-....-": "-", "-..-.": "/", "---...": ":", ".--.-.": "@", "-.--.": "(", "-.--.-": ")", ".-...": "&", ".-.-.": "+", "-...-": "=", ".----.": "'", ".-..-.": "\"" };
+  function morseDecode(s) {
+    const t = s.trim();
+    if (!/^[.\-\/|\s]+$/.test(t) || t.indexOf(".") < 0 || t.indexOf("-") < 0) return null;
+    const words = t.replace(/\s*[\/|]\s*/g, " / ").split(" / ");
+    const res = words.map((w) => w.trim().split(/\s+/).map((c) => (MORSE[c] != null ? MORSE[c] : "")).join("")).join(" ").trim();
+    return res && /[A-Z0-9]/.test(res) ? res : null;
+  }
+  // NATO 포네틱 → 글자
+  const NATO = { alpha: "a", alfa: "a", bravo: "b", charlie: "c", delta: "d", echo: "e", foxtrot: "f", golf: "g", hotel: "h", india: "i", juliett: "j", juliet: "j", kilo: "k", lima: "l", mike: "m", november: "n", oscar: "o", papa: "p", quebec: "q", romeo: "r", sierra: "s", tango: "t", uniform: "u", victor: "v", whiskey: "w", whisky: "w", xray: "x", "x-ray": "x", yankee: "y", zulu: "z", zero: "0", one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", niner: "9" };
+  function natoDecode(s) {
+    const toks = s.toLowerCase().trim().split(/[\s,]+/).filter((x) => x.length);
+    if (toks.length < 2) return null;
+    let hit = 0, res = "";
+    for (const w of toks) { if (NATO[w] != null) { res += NATO[w]; hit++; } }
+    return hit >= Math.max(2, Math.ceil(toks.length * 0.7)) ? res : null;
+  }
+  // Vigenère 자동해독 (영문): IC로 키 길이 추정 → 열별 빈도 최적 시프트
+  const ENGF = [8.2, 1.5, 2.8, 4.3, 12.7, 2.2, 2.0, 6.1, 7.0, 0.15, 0.8, 4.0, 2.4, 6.7, 7.5, 1.9, 0.1, 6.0, 6.3, 9.1, 2.8, 1.0, 2.4, 0.15, 2.0, 0.07];
+  function vigRecover(text, L) {
+    const nums = Array.from(text.toUpperCase().replace(/[^A-Z]/g, "")).map((c) => c.charCodeAt(0) - 65);
+    const key = [];
+    for (let c = 0; c < L; c++) {
+      const col = []; for (let i = c; i < nums.length; i += L) col.push(nums[i]);
+      let bs = -1, bk = 0;
+      for (let k = 0; k < 26; k++) { const f = new Array(26).fill(0); col.forEach((x) => f[(x - k + 26) % 26]++); let s = 0; for (let j = 0; j < 26; j++) s += (f[j] / col.length) * ENGF[j]; if (s > bs) { bs = s; bk = k; } }
+      key.push(bk);
+    }
+    let ki = 0; const out = text.replace(/[A-Za-z]/g, (ch) => { const upper = ch <= "Z"; const base = upper ? 65 : 97; const k = key[ki % L]; ki++; return String.fromCharCode((ch.charCodeAt(0) - base - k + 26) % 26 + base); });
+    return { key: key.map((k) => String.fromCharCode(65 + k)).join(""), text: out, es: englishScore(out) };
+  }
+  function breakVigenere(text) {
+    const letters = (text.match(/[A-Za-z]/g) || []).length; if (letters < 40) return null;
+    // 키 길이를 IC로 확정하지 않고, 후보 길이별로 복원해 영어 점수가 가장 높은 것을 선택 (짧은 텍스트에서 IC 불안정성 회피)
+    let best = null;
+    for (let L = 1; L <= Math.min(16, letters >> 2); L++) { const r = vigRecover(text, L); if (!best || r.es > best.es) best = r; }
+    return best;
+  }
+  // Base45 (RFC 9285)
+  function base45Decode(s) {
+    const C = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ $%*+-./:"; s = s.trim();
+    if (!/^[0-9A-Z $%*+\-.\/:]+$/.test(s)) return null;
+    const out = [];
+    for (let i = 0; i < s.length;) {
+      const n = Math.min(3, s.length - i); if (n === 1) return null;
+      let v = 0; for (let j = 0; j < n; j++) { const d = C.indexOf(s[i + j]); if (d < 0) return null; v += d * Math.pow(45, j); }
+      i += n;
+      if (n === 3) { if (v > 0xffff) return null; out.push((v >> 8) & 0xff, v & 0xff); } else { if (v > 0xff) return null; out.push(v); }
+    }
+    return Uint8Array.from(out);
+  }
+  // uuencode 본문 → 바이트
+  function uudecode(s) {
+    const lines = s.split(/\r?\n/), out = []; let started = false;
+    for (const ln of lines) {
+      if (/^begin[ ]+[0-7]{3}[ ]/.test(ln)) { started = true; continue; }
+      if (/^end\s*$/.test(ln)) break;
+      if (!started || !ln.length || ln === "`") continue;
+      const cnt = (ln.charCodeAt(0) - 32) & 0x3f; if (cnt <= 0) continue;
+      const bytes = [];
+      for (let i = 1; i < ln.length; i += 4) { const c = [0, 1, 2, 3].map((j) => ((ln.charCodeAt(i + j) || 96) - 32) & 0x3f); bytes.push((c[0] << 2) | (c[1] >> 4), ((c[1] & 0xf) << 4) | (c[2] >> 2), ((c[2] & 0x3) << 6) | c[3]); }
+      for (const b of bytes.slice(0, cnt)) out.push(b);
+    }
+    return started && out.length ? Uint8Array.from(out) : null;
+  }
+  // Punycode (RFC 3492) 라벨/도메인 디코드
+  function pnAdapt(delta, n, first) { delta = first ? Math.floor(delta / 700) : delta >> 1; delta += Math.floor(delta / n); let k = 0; for (; delta > 455; k += 36) delta = Math.floor(delta / 35); return k + Math.floor(36 * delta / (delta + 38)); }
+  function punyLabel(input) {
+    const base = 36, tmin = 1, tmax = 26, initialBias = 72, initialN = 128, MAX = 0x7fffffff;
+    const output = []; let i = 0, n = initialN, bias = initialBias;
+    const basic = input.lastIndexOf("-");
+    for (let j = 0; j < (basic < 0 ? 0 : basic); j++) { const cp = input.charCodeAt(j); if (cp >= 0x80) return null; output.push(cp); }
+    let idx = basic < 0 ? 0 : basic + 1;
+    const dig = (cp) => (cp - 48 < 10 ? cp - 22 : cp - 65 < 26 ? cp - 65 : cp - 97 < 26 ? cp - 97 : base);
+    while (idx < input.length) {
+      let oldi = i, w = 1;
+      for (let k = base; ; k += base) {
+        if (idx >= input.length) return null;
+        const d = dig(input.charCodeAt(idx++)); if (d >= base) return null;
+        if (d > Math.floor((MAX - i) / w)) return null; i += d * w;
+        const t = k <= bias ? tmin : k >= bias + tmax ? tmax : k - bias; if (d < t) break;
+        if (w > Math.floor(MAX / (base - t))) return null; w *= base - t;
+      }
+      const outLen = output.length + 1; bias = pnAdapt(i - oldi, outLen, oldi === 0);
+      if (Math.floor(i / outLen) > MAX - n) return null; n += Math.floor(i / outLen); i %= outLen;
+      output.splice(i, 0, n); i++;
+    }
+    try { return String.fromCodePoint.apply(null, output); } catch (e) { return null; }
+  }
+  function punycodeDecode(s) { return s.split(".").map((l) => { if (/^xn--/i.test(l)) { const d = punyLabel(l.slice(4)); return d == null ? l : d; } return l; }).join("."); }
+  // 제로폭 문자 스테가노 → 바이트
+  function zeroWidthDecode(s) {
+    const map = { 0x200b: 0, 0x200c: 1, 0x200d: 2, 0xfeff: 3, 0x2060: 4 };
+    const syms = []; for (const ch of s) { const c = ch.codePointAt(0); if (map[c] != null) syms.push(map[c]); }
+    if (syms.length < 16) return null;
+    const distinct = Array.from(new Set(syms)).sort((a, b) => a - b);
+    let bits = "";
+    if (distinct.length === 2) { syms.forEach((x) => (bits += x === distinct[0] ? "0" : "1")); }
+    else if (distinct.length <= 4) { const im = {}; distinct.forEach((v, i) => (im[v] = i)); syms.forEach((x) => (bits += im[x].toString(2).padStart(2, "0"))); }
+    else return null;
+    const bytes = []; for (let i = 0; i + 8 <= bits.length; i += 8) bytes.push(parseInt(bits.slice(i, i + 8), 2));
+    return bytes.length ? Uint8Array.from(bytes) : null;
+  }
+
   // 고엔트로피 토큰 · 시크릿 · 해시 프리픽스 (AES 암호문이 아닌 것들)
   const TOKENS = [
     { re: /^sk_(live|test)_[0-9A-Za-z]{10,}$/, n: "Stripe 비밀키 (sk_)" },
@@ -827,17 +978,20 @@
       pushTok(cands, "PASETO 토큰", 0.92, "🎫", s0.split(".").slice(0, 2).join(".") + " · 플랫폼 무관 보안 토큰"); return true;
     }
     const parts = noSpace.split(".");
-    if (parts.length === 3 && parts[0] && parts.every((p) => /^[A-Za-z0-9\-_]*$/.test(p))) {
+    // JWT: 헤더는 항상 base64url("{\"...") → "eyJ"로 시작하고 alg를 가진 JSON이어야 함 (도메인 등 오탐 방지)
+    if (parts.length === 3 && /^eyJ[A-Za-z0-9\-_]+$/.test(parts[0]) && parts.every((p) => /^[A-Za-z0-9\-_]*$/.test(p))) {
       const header = b64uJson(parts[0]), payload = b64uJson(parts[1]);
-      let sub = "header.payload.signature";
-      if (header && header.alg) sub += " · alg=" + header.alg + (header.typ ? " typ=" + header.typ : "");
-      pushTok(cands, "JWT", 0.93, "🎫", sub, { kind: "jwt", header: header, payload: payload }); return true;
+      if (header && header.alg) {
+        const sub = "header.payload.signature · alg=" + header.alg + (header.typ ? " typ=" + header.typ : "");
+        pushTok(cands, "JWT", 0.93, "🎫", sub, { kind: "jwt", header: header, payload: payload }); return true;
+      }
     }
-    if (parts.length === 5 && parts.every((p) => /^[A-Za-z0-9\-_]*$/.test(p))) {
+    if (parts.length === 5 && /^eyJ[A-Za-z0-9\-_]+$/.test(parts[0]) && parts.every((p) => /^[A-Za-z0-9\-_]*$/.test(p))) {
       const header = b64uJson(parts[0]);
-      let sub = "header.key.iv.ciphertext.tag (5분할)";
-      if (header && header.alg) sub += " · alg=" + header.alg + (header.enc ? " enc=" + header.enc : "");
-      pushTok(cands, "JWE · 암호화된 JWT", 0.9, "🎫", sub, { kind: "jwe", header: header }); return true;
+      if (header && header.alg && header.enc) {
+        const sub = "header.key.iv.ciphertext.tag (5분할) · alg=" + header.alg + " enc=" + header.enc;
+        pushTok(cands, "JWE · 암호화된 JWT", 0.9, "🎫", sub, { kind: "jwe", header: header }); return true;
+      }
     }
     if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(s0)) {
       const ver = s0[14]; let sub = "v" + ver + " 식별자 — 암호문 아님";
@@ -1050,13 +1204,19 @@
   async function autoCommonKeys(seq) {
     const ctStr = $("ct").value.trim();
     commonHit = null;
-    if (!ctStr || ctStr.length > 4096 || !looksCipher(ctStr)) return;
+    // 해시(md5/sha 등)는 복호화 대상이 아님 → 오탐 방지
+    if (!ctStr || ctStr.length > 4096 || !looksCipher(ctStr) || isHashInput(ctStr) || hashByLen(ctStr)) return;
     trace("흔한 키 자동 시도 → " + COMMON_KEYS.length + "개 상수 키/비번 대입", "step", "crack");
     let best = null;
     for (const k of COMMON_KEYS) {
       let r; try { r = await tryAllConfigs(ctStr, k); } catch (e) { continue; }
       if (seq !== commonSeq) return; // 새 입력이 들어오면 중단
-      if (r && r.length && r[0].score > 55 && r[0].text.length >= 4 && (!best || r[0].score > best.score)) best = { key: k, label: r[0].label, text: r[0].text, score: r[0].score };
+      // 단일블록 무작위 복호화가 우연히 인쇄가능해지는 오탐 차단 — 의미 있는 텍스트만 채택
+      if (r && r.length) {
+        const txt = r[0].text;
+        const meaningful = englishScore(txt) > 18 || /[가-힣]/.test(txt) || /^\s*[\[{]/.test(txt);
+        if (r[0].score > 60 && txt.length >= 6 && meaningful && (!best || r[0].score > best.score)) best = { key: k, label: r[0].label, text: txt, score: r[0].score };
+      }
     }
     if (best) {
       commonHit = best;
@@ -1248,6 +1408,41 @@
           if (/^[A-Z2-7]+=*$/.test(ns) && ns.length % 8 === 0 && ns.length >= 16) { const u = b32ToU8(ns); if (u && u.length) enq(u, true, st.recipe.concat("Base32")); }
           if (/^[1-9A-HJ-NP-Za-km-z]+$/.test(ns) && ns.length >= 16 && !looksHex(ns) && !(/^[A-Za-z0-9+/]+={0,2}$/.test(ns) && ns.length % 4 === 0)) { const u = b58ToU8(ns); if (u && u.length) enq(u, true, st.recipe.concat("Base58")); }
         }
+        // ---- 추가 디코더: 문자코드·이스케이프·고전암호·레거시 ----
+        // 구분자 문자코드 열(10/16/8/2진) + A1Z26
+        if (/[0-9]/.test(s) && st.recipe.indexOf("A1Z26") < 0) {
+          charcodeVariants(s).forEach((cv) => { if (cv[1] && cv[1].length) enq(cv[1], true, st.recipe.concat(cv[0])); });
+          const az = a1z26(s); if (az) results.push({ recipe: st.recipe.concat("A1Z26"), text: az, score: scoreAll(az) + 4 });
+        }
+        // 이스케이프 문자열 \xHH \uHHHH \u{..} \OOO
+        if (st.recipe.indexOf("이스케이프") < 0 && /\\(x[0-9A-Fa-f]{2}|u\{?[0-9A-Fa-f]{2}|[0-3]?[0-7]{2}(?![0-9]))/.test(s)) {
+          const u = decodeEscapes(s); if (u && u.length) enq(u, true, st.recipe.concat("이스케이프"));
+        }
+        // ROT47 / Atbash
+        if (opts.xor && st.recipe.indexOf("ROT47") < 0 && /[!-~]/.test(s) && printableStrRatio(s) > 0.95 && s.length >= 4 && /[A-Za-z]/.test(s)) {
+          const r = rot47(s); if (englishScore(r) > englishScore(s) + 14) results.push({ recipe: st.recipe.concat("ROT47"), text: r, score: scoreAll(r) + 4 });
+        }
+        if (opts.xor && st.recipe.indexOf("Atbash") < 0 && (s.match(/[A-Za-z]/g) || []).length >= 6 && printableStrRatio(s) > 0.9) {
+          const a = atbash(s); if (englishScore(a) > englishScore(s) + 14) results.push({ recipe: st.recipe.concat("Atbash"), text: a, score: scoreAll(a) + 4 });
+        }
+        // Morse
+        if (st.recipe.indexOf("Morse") < 0) { const m = morseDecode(s); if (m && m.length >= 2) results.push({ recipe: st.recipe.concat("Morse"), text: m, score: scoreAll(m) + 6 }); }
+        // NATO 포네틱
+        if (st.recipe.indexOf("NATO") < 0 && /[A-Za-z]/.test(s)) { const nt = natoDecode(s); if (nt && nt.length >= 2) results.push({ recipe: st.recipe.concat("NATO"), text: nt, score: scoreAll(nt) + 4 }); }
+        // Vigenère 자동해독 (영문 프로즈처럼 보이나 아직 안 읽힐 때)
+        if (opts.xor && st.recipe.indexOf("Vigenère") < 0 && (s.match(/[A-Za-z]/g) || []).length >= 40 && englishScore(s) < 25) {
+          const vg = breakVigenere(s); if (vg && vg.es > 30 && vg.es > englishScore(s) + 15) results.push({ recipe: st.recipe.concat("Vigenère(키=" + vg.key + ")"), text: vg.text, score: scoreAll(vg.text) });
+        }
+        // Punycode
+        if (st.recipe.indexOf("Punycode") < 0 && /(^|\.)xn--/i.test(s)) { const p = punycodeDecode(s); if (p && p !== s) results.push({ recipe: st.recipe.concat("Punycode"), text: p, score: scoreAll(p) + 6 }); }
+        // Base45 (RFC 9285)
+        if (st.recipe.indexOf("Base45") < 0 && ns.length >= 6 && ns.length % 3 !== 1 && /^[0-9A-Z $%*+\-.\/:]+$/.test(s) && !(/^[A-Za-z0-9+/]+={0,2}$/.test(ns) && ns.length % 4 === 0)) {
+          const u = base45Decode(s); if (u && u.length) enq(u, true, st.recipe.concat("Base45"));
+        }
+        // uuencode
+        if (st.recipe.indexOf("uudecode") < 0 && /^begin[ ]+[0-7]{3}[ ]/m.test(s)) { const u = uudecode(s); if (u && u.length) enq(u, true, st.recipe.concat("uudecode")); }
+        // 제로폭 문자 스테가노
+        if (st.recipe.indexOf("제로폭") < 0 && /[\u200b\u200c\u200d\u2060\ufeff]/.test(s)) { const u = zeroWidthDecode(s); if (u && u.length) enq(u, true, st.recipe.concat("제로폭")); }
       } else {
         const u = st.v;
         const fmt = (u[0] === 0x1f && u[1] === 0x8b) ? "gzip" : (u[0] === 0x78 && [0x01, 0x5e, 0x9c, 0xda].indexOf(u[1]) >= 0) ? "deflate" : null;
