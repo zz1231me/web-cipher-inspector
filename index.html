@@ -133,6 +133,11 @@
   .magic.ok .magic-t { color:var(--ok); }
   .magic.hint { background:var(--fill); border-color:var(--line); }
   .magic-sub { font-size:12.5px; color:var(--ink2); margin:-4px 0 12px; line-height:1.5; }
+  .solve-item { margin-top:10px; padding:11px 13px; background:var(--card); border:1px solid var(--line-2); border-radius:10px; }
+  .solve-recipe { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
+  .solve-recipe .a-step { font-size:11px; padding:4px 9px; }
+  .solve-text { font-family:var(--mono); font-size:11.5px; color:var(--ink2); white-space:pre-wrap; word-break:break-all; line-height:1.5; }
+  .solve-item .a-apply { margin-top:9px; }
 
   /* Analysis — visual */
   .analysis { margin-top:20px; padding:20px; background:var(--fill); border-radius:16px; }
@@ -756,7 +761,7 @@
     lastSrc = "ct";
     analyzeNow(); save(); convert("ct");
   }
-  let anaSeq = 0, lastCands = null, lastMagic = null, aesPlain = null;
+  let anaSeq = 0, lastCands = null, lastSolve = null, aesPlain = null;
   async function analyzeNow() {
     const seq = ++anaSeq;
     const cands = analyze($("ct").value);
@@ -794,48 +799,76 @@
     return p / s.length > 0.9;
   }
   // 입력을 가장 그럴듯한 디코드 체인으로 자동 관통해 최종 결과(주로 텍스트)를 반환
-  async function bake(input) {
-    let cur = (input || "").trim();
-    const chain = [];
-    for (let step = 0; step < 7 && cur != null; step++) {
-      if (typeof cur === "string") {
-        const s = cur.trim();
-        if (!s) break;
-        if (/%[0-9a-fA-F]{2}/.test(s)) { try { const d = decodeURIComponent(s); if (d && d !== s) { chain.push("URL 디코드"); cur = d; continue; } } catch (e) {} }
+  function printableStrRatio(s) {
+    if (!s.length) return 0;
+    let p = 0;
+    for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); if (c === 9 || c === 10 || c === 13 || (c >= 32 && c <= 126) || c >= 160) p++; }
+    return p / s.length;
+  }
+  function scoreText(s) {
+    const t = s.trim();
+    let sc = printableStrRatio(t) * 40;
+    if (/^[\[{]/.test(t)) { try { JSON.parse(t); sc += 50; } catch (e) { sc += 8; } }
+    if (/\s/.test(t) && /[A-Za-z]/.test(t)) sc += 12;
+    const ns = t.replace(/\s+/g, "");
+    if ((/^[A-Za-z0-9+/]+={0,2}$/.test(ns) && ns.length % 4 === 0 && ns.length >= 8) || (looksHex(ns) && ns.length >= 8)) sc -= 45; // 아직 인코딩 상태(중간 단계)
+    const good = (t.match(/[A-Za-z0-9 \t\r\n,.:;{}"'\[\]()_\-\/@]/g) || []).length / (t.length || 1);
+    sc += good * 22;
+    return Math.round(sc);
+  }
+  // 하나의 입력을 여러 디코드 조합으로 자동 탐색(BFS)해 읽을 수 있는 평문 후보들을 수집
+  async function autoSolve(input) {
+    const start = (input || "").trim();
+    if (!start || start.length < 4) return [];
+    const results = [], seen = new Set();
+    const MAXN = 400, MAXDEPTH = 6;
+    let nodes = 0;
+    const queue = [{ v: start, bytes: false, recipe: [] }];
+    const enq = (v, bytes, recipe) => { if (recipe.length <= MAXDEPTH) queue.push({ v: v, bytes: bytes, recipe: recipe }); };
+    while (queue.length && nodes < MAXN) {
+      const st = queue.shift(); nodes++;
+      const key = st.bytes ? "B:" + u8ToHex(st.v).slice(0, 80) : "S:" + st.v.slice(0, 100);
+      if (seen.has(key)) continue; seen.add(key);
+      if (!st.bytes) {
+        const s = st.v.trim();
+        if (st.recipe.length && printableStrRatio(s) > 0.85 && s.length >= 2) results.push({ recipe: st.recipe, text: s, score: scoreText(s) });
         const ns = s.replace(/\s+/g, "");
-        let u = null, op = null;
+        if (/%[0-9a-fA-F]{2}/.test(s)) { try { const d = decodeURIComponent(s); if (d && d !== s) enq(d, false, st.recipe.concat("URL")); } catch (e) {} }
         if (ns.length >= 8) {
-          if (/^[A-Za-z0-9+/]+={0,2}$/.test(ns) && ns.length % 4 === 0) { u = b64ToU8(ns); op = "Base64 디코드"; }
-          else if (/^[A-Za-z0-9\-_]+={0,2}$/.test(ns) && /[-_]/.test(ns)) { u = b64ToU8(ns); op = "Base64url 디코드"; }
-          else if (looksHex(ns)) { u = hexToU8(ns); op = "Hex 디코드"; }
-          else if (/^[A-Z2-7]+=*$/.test(ns) && ns.length % 8 === 0) { u = b32ToU8(ns); op = "Base32 디코드"; }
+          if (/^[A-Za-z0-9+/]+={0,2}$/.test(ns) && ns.length % 4 === 0) { const u = b64ToU8(ns); if (u && u.length) enq(u, true, st.recipe.concat("Base64")); }
+          if (/^[A-Za-z0-9\-_]+={0,2}$/.test(ns) && /[-_]/.test(ns)) { const u = b64ToU8(ns); if (u && u.length) enq(u, true, st.recipe.concat("Base64url")); }
+          if (looksHex(ns)) { const u = hexToU8(ns); if (u && u.length) enq(u, true, st.recipe.concat("Hex")); }
+          if (/^[A-Z2-7]+=*$/.test(ns) && ns.length % 8 === 0 && ns.length >= 16) { const u = b32ToU8(ns); if (u && u.length) enq(u, true, st.recipe.concat("Base32")); }
+          if (/^[1-9A-HJ-NP-Za-km-z]+$/.test(ns) && ns.length >= 16 && !looksHex(ns) && !(/^[A-Za-z0-9+/]+={0,2}$/.test(ns) && ns.length % 4 === 0)) { const u = b58ToU8(ns); if (u && u.length) enq(u, true, st.recipe.concat("Base58")); }
         }
-        if (u && u.length) { chain.push(op); cur = u; continue; }
-        break;
       } else {
-        const u = cur;
+        const u = st.v;
         const fmt = (u[0] === 0x1f && u[1] === 0x8b) ? "gzip" : (u[0] === 0x78 && [0x01, 0x5e, 0x9c, 0xda].indexOf(u[1]) >= 0) ? "deflate" : null;
         if (fmt && typeof DecompressionStream !== "undefined") {
-          try {
-            const buf = await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream(fmt))).arrayBuffer();
-            chain.push(fmt + " 압축 해제"); cur = new Uint8Array(buf); continue;
-          } catch (e) {}
+          try { const buf = await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream(fmt))).arrayBuffer(); enq(new Uint8Array(buf), true, st.recipe.concat(fmt + " 해제")); } catch (e) {}
         }
-        if (printableRatio(u) > 0.9) {
-          const t = new TextDecoder("utf-8", { fatal: false }).decode(u);
-          const nt = t.trim().replace(/\s+/g, "");
-          const again = (/^[A-Za-z0-9+/]+={0,2}$/.test(nt) && nt.length % 4 === 0 && nt.length >= 24) || (looksHex(nt) && nt.length >= 24);
-          cur = t; if (again) continue; else break;
-        }
-        break;
+        if (printableRatio(u) > 0.85) enq(new TextDecoder("utf-8", { fatal: false }).decode(u), false, st.recipe.slice());
+        else if (st.recipe.length) { const magic = identifyMagic(u); if (magic) results.push({ recipe: st.recipe, text: "[" + magic + "]  " + hexPrefix(u, 16) + " …", score: 55, binary: true }); }
       }
     }
-    return { chain, value: cur, isText: typeof cur === "string" };
+    const uniq = {};
+    for (const r of results) { const k = r.text; if (!uniq[k] || r.score > uniq[k].score || (r.score === uniq[k].score && r.recipe.length < uniq[k].recipe.length)) uniq[k] = r; }
+    return Object.values(uniq).sort((a, b) => b.score - a.score || a.recipe.length - b.recipe.length).slice(0, 6);
+  }
+  function looksCipher(s) {
+    if (looksOpenSSL(s)) return true;
+    const ns = (s || "").trim().replace(/\s+/g, "");
+    let u = null;
+    if (/^[A-Za-z0-9+/]+={0,2}$/.test(ns) && ns.length % 4 === 0) u = b64ToU8(ns);
+    else if (looksHex(ns)) u = hexToU8(ns);
+    return !!(u && u.length >= 16 && printableRatio(u) < 0.6);
   }
   async function updateFinal(seq) {
-    lastMagic = await bake($("ct").value);
+    lastSolve = await autoSolve($("ct").value);
     if (seq !== anaSeq) return;
     renderFinal();
+    // 암호문 + 사전 로드됨 → 자동으로 대입까지
+    if ((!lastSolve || !lastSolve.length) && wordlistText && looksCipher($("ct").value)) scheduleDict();
   }
   function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase" }; return m[$("scheme").value] || "복호화"; }
   function pretty(o) { try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); } }
@@ -882,14 +915,28 @@
     // 1.5) 토큰(JWT/JWE 등) — 디코드된 내용 표시
     const topTok = lastCands && lastCands[0];
     if (topTok && topTok.token && topTok.token.decoded) { renderTokenFinal(box, topTok); return; }
-    // 2) 인코딩/압축 자동 디코드 결과 (Magic)
-    if (lastMagic && lastMagic.isText && lastMagic.chain.length && lastMagic.value.trim()) {
-      box.appendChild(el("div", "magic-t", "🪄 자동 디코드 결과 (Magic)"));
+    // 2) 자동 해독 — 여러 디코드 조합을 시도한 평문 후보들
+    if (lastSolve && lastSolve.length) {
+      const best = lastSolve[0];
+      box.appendChild(el("div", "magic-t", "🧪 자동 해독 — 여러 조합 시도 · 후보 " + lastSolve.length + "개"));
       const rec = el("div", "magic-recipe");
-      ["입력"].concat(lastMagic.chain, ["결과"]).forEach((s, i) => { if (i) rec.appendChild(el("span", "a-arrow", "→")); rec.appendChild(el("span", "a-step", s)); });
+      ["입력"].concat(best.recipe, ["결과"]).forEach((s, i) => { if (i) rec.appendChild(el("span", "a-arrow", "→")); rec.appendChild(el("span", "a-step", s)); });
       box.appendChild(rec);
-      box.appendChild(el("div", "magic-out", lastMagic.value.length > 4000 ? lastMagic.value.slice(0, 4000) + " …" : lastMagic.value));
-      finalActions(box, lastMagic.value, true);
+      box.appendChild(el("div", "magic-out", best.text.length > 4000 ? best.text.slice(0, 4000) + " …" : best.text));
+      finalActions(box, best.text, true);
+      if (lastSolve.length > 1) {
+        const sec = el("div", "a-section"); sec.appendChild(el("div", "a-section-t", "다른 후보"));
+        lastSolve.slice(1).forEach((c) => {
+          const row = el("div", "solve-item");
+          const rc = el("div", "solve-recipe");
+          ["입력"].concat(c.recipe, ["결과"]).forEach((s, i) => { if (i) rc.appendChild(el("span", "a-arrow", "→")); rc.appendChild(el("span", "a-step", s)); });
+          row.appendChild(rc);
+          row.appendChild(el("div", "solve-text", c.text.length > 140 ? c.text.slice(0, 140) + " …" : c.text));
+          const b = el("button", "a-apply", "복사"); b.type = "button"; b.onclick = () => copy(c.text, b);
+          row.appendChild(b); sec.appendChild(row);
+        });
+        box.appendChild(sec);
+      }
       return;
     }
     // 3) 암호문인데 키가 없음 → 평문까지 가도록 키 입력 유도
@@ -1213,7 +1260,7 @@
     };
 
     $("pt").addEventListener("input", () => { if (!suppress) schedule("pt"); });
-    $("ct").addEventListener("input", () => { if (suppress) return; analyzeNow(); schedule("ct"); if (wordlistText && looksOpenSSL($("ct").value)) scheduleDict(); });
+    $("ct").addEventListener("input", () => { if (suppress) return; analyzeNow(); schedule("ct"); });
 
     $("exBtn").onclick = () => { $("ct").value = btoa('{"user":"admin","role":"guest","exp":1699999999}'); $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
     $("clrCt").onclick = () => { $("ct").value = ""; $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
@@ -1249,7 +1296,7 @@
       $("ivPrepend").checked = false;
       status("pt", "idle", ""); status("ct", "idle", "");
       renderAnalysis(null);
-      aesPlain = null; lastMagic = null; lastCands = null;
+      aesPlain = null; lastSolve = null; lastCands = null;
       $("magicOut").classList.add("hidden"); $("magicOut").textContent = "";
       wordlistText = null; try { $("wordlist").value = ""; } catch (e) {}
       dstat("idle", "단어목록(.txt)을 올리면 위 암호문(OpenSSL/CryptoJS passphrase)에 대해 자동으로 시도합니다.");
