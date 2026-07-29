@@ -138,6 +138,11 @@
   .solve-recipe .a-step { font-size:11px; padding:4px 9px; }
   .solve-text { font-family:var(--mono); font-size:11.5px; color:var(--ink2); white-space:pre-wrap; word-break:break-all; line-height:1.5; }
   .solve-item .a-apply { margin-top:9px; }
+  .hash-row { display:flex; align-items:center; gap:8px; padding:5px 0; font-family:var(--mono); font-size:11.5px; }
+  .hash-k { width:60px; flex:none; color:var(--ink3); font-weight:600; text-transform:uppercase; font-size:10px; letter-spacing:.03em; }
+  .hash-v { flex:1; min-width:0; color:var(--ink); word-break:break-all; }
+  .hash-row .a-apply { flex:none; }
+  input[type=range] { width:100%; accent-color:var(--accent); margin:4px 0 0; }
 
   /* Analysis — visual */
   .analysis { margin-top:20px; padding:20px; background:var(--fill); border-radius:16px; }
@@ -235,6 +240,9 @@
               <option value="ctr">AES-CTR (key + IV)</option>
               <option value="ecb">AES-ECB (key)</option>
               <option value="pass">Passphrase (CryptoJS / OpenSSL)</option>
+              <option value="rc4">RC4 (key, 스트림)</option>
+              <option value="des">DES (key + IV/ECB)</option>
+              <option value="3des">Triple DES (key + IV/ECB)</option>
             </select>
           </div>
           <div class="field" id="padWrap">
@@ -337,6 +345,48 @@
           <button class="btn ghost hidden" id="dictStop" type="button">중지</button>
         </div>
         <div class="pstatus idle" id="dictStatus">.txt 단어목록을 올리면 자동 시도합니다. <b>Passphrase</b>=OpenSSL/CryptoJS 비밀번호, <b>AES 키</b>=각 단어를 위 ‘방식·IV·키 형식’ 설정의 키로 대입.</div>
+      </div>
+    </details>
+
+    <details class="card details" id="toolBox">
+      <summary class="details-sum">
+        <span class="sum-title">🧰 고급 도구</span>
+        <span class="sum-hint">해시 · XOR · ROT · 공유/내보내기</span>
+      </summary>
+      <div class="details-body">
+        <div class="field">
+          <label>해시 (현재 입력 기준)</label>
+          <div id="hashGrid"></div>
+        </div>
+
+        <div class="field">
+          <label for="xorKey">XOR</label>
+          <div class="input-group">
+            <input id="xorKey" type="text" placeholder="XOR 키 (hex 예: 41, 4142 / 또는 UTF-8)" autocomplete="off" spellcheck="false" />
+            <select id="xorFmt" class="suffix"><option value="Hex">Hex</option><option value="Utf8">UTF-8</option></select>
+          </div>
+          <div class="opts">
+            <button class="link" id="xorRun" type="button">XOR 적용</button>
+            <button class="link" id="xorBrute" type="button">단일바이트 브루트포스 (0~255)</button>
+          </div>
+          <div class="a-prev hidden" id="xorOut"></div>
+        </div>
+
+        <div class="field">
+          <label for="rotN">ROT-N (Caesar) · 시프트 <span id="rotVal">13</span></label>
+          <input id="rotN" type="range" min="0" max="25" value="13" />
+          <div class="a-prev" id="rotOut"></div>
+        </div>
+
+        <div class="field" style="margin:0;">
+          <label>공유 · 내보내기</label>
+          <div class="opts">
+            <button class="btn ghost" id="shareLink" type="button">🔗 공유 링크 복사</button>
+            <button class="btn ghost" id="exportOpenssl" type="button">openssl 코드</button>
+            <button class="btn ghost" id="exportPython" type="button">python 코드</button>
+          </div>
+          <div class="a-prev hidden" id="exportOut"></div>
+        </div>
       </div>
     </details>
 
@@ -767,6 +817,7 @@
     const cands = analyze($("ct").value);
     renderAnalysis(cands);
     lastCands = cands;
+    updateTools();
     updateFinal(seq);
     // 자동 레이어 관통: 최상위 후보가 gzip/zlib면 압축 해제해 내부까지 표시
     const top = cands && cands[0];
@@ -816,6 +867,19 @@
     sc += good * 22;
     return Math.round(sc);
   }
+  function englishScore(s) {
+    const t = s.toLowerCase();
+    const common = (t.match(/\b(the|and|for|are|you|this|that|with|from|admin|user|pass|password|flag|key|secret|true|false|role|token|name|email|login|root|test)\b/g) || []).length;
+    const vowels = (t.match(/[aeiou]/g) || []).length / (t.length || 1);
+    const letters = (t.match(/[a-z ]/g) || []).length / (t.length || 1);
+    return common * 20 + vowels * 15 + letters * 10 + (/^[\[{]/.test(s.trim()) ? 15 : 0);
+  }
+  function scoreAll(t) { return scoreText(t) + Math.min(45, Math.round(englishScore(t))); }
+  function xorBytes(u8, keyBytes) { const r = new Uint8Array(u8.length); for (let i = 0; i < u8.length; i++) r[i] = u8[i] ^ keyBytes[i % keyBytes.length]; return r; }
+  function rotStr(s, n) {
+    return s.replace(/[a-z]/g, (c) => String.fromCharCode((c.charCodeAt(0) - 97 + n) % 26 + 97))
+            .replace(/[A-Z]/g, (c) => String.fromCharCode((c.charCodeAt(0) - 65 + n) % 26 + 65));
+  }
   // 하나의 입력을 여러 디코드 조합으로 자동 탐색(BFS)해 읽을 수 있는 평문 후보들을 수집
   async function autoSolve(input) {
     const start = (input || "").trim();
@@ -831,7 +895,13 @@
       if (seen.has(key)) continue; seen.add(key);
       if (!st.bytes) {
         const s = st.v.trim();
-        if (st.recipe.length && printableStrRatio(s) > 0.85 && s.length >= 2) results.push({ recipe: st.recipe, text: s, score: scoreText(s) });
+        if (st.recipe.length && printableStrRatio(s) > 0.85 && s.length >= 2) results.push({ recipe: st.recipe, text: s, score: scoreAll(s) });
+        // ROT/Caesar 자동: 알파벳 위주면 최적 시프트를 후보로
+        if (/[A-Za-z]/.test(s) && printableStrRatio(s) > 0.95 && s.length >= 4 && st.recipe.indexOf("ROT") < 0 && !st.recipe.some((x) => x.indexOf("ROT") === 0)) {
+          let best = null; const base = englishScore(s);
+          for (let n = 1; n < 26; n++) { const r = rotStr(s, n); const es = englishScore(r); if (!best || es > best.es) best = { n: n, r: r, es: es }; }
+          if (best && best.es > base + 12) results.push({ recipe: st.recipe.concat(best.n === 13 ? "ROT13" : "ROT-" + best.n), text: best.r, score: scoreAll(best.r) + 8 });
+        }
         const ns = s.replace(/\s+/g, "");
         if (/%[0-9a-fA-F]{2}/.test(s)) { try { const d = decodeURIComponent(s); if (d && d !== s) enq(d, false, st.recipe.concat("URL")); } catch (e) {} }
         if (ns.length >= 8) {
@@ -847,8 +917,16 @@
         if (fmt && typeof DecompressionStream !== "undefined") {
           try { const buf = await new Response(new Blob([u]).stream().pipeThrough(new DecompressionStream(fmt))).arrayBuffer(); enq(new Uint8Array(buf), true, st.recipe.concat(fmt + " 해제")); } catch (e) {}
         }
-        if (printableRatio(u) > 0.85) enq(new TextDecoder("utf-8", { fatal: false }).decode(u), false, st.recipe.slice());
-        else if (st.recipe.length) { const magic = identifyMagic(u); if (magic) results.push({ recipe: st.recipe, text: "[" + magic + "]  " + hexPrefix(u, 16) + " …", score: 55, binary: true }); }
+        const pr = printableRatio(u);
+        if (pr > 0.85) enq(new TextDecoder("utf-8", { fatal: false }).decode(u), false, st.recipe.slice());
+        // 단일바이트 XOR 브루트포스 — 직독이 영어스럽지 않으면 시도(출력가능 여부 무관)
+        if (st.recipe.length && u.length <= 8192 && !st.recipe.some((x) => x.indexOf("XOR") === 0)) {
+          const straightEs = pr > 0.85 ? englishScore(new TextDecoder("utf-8", { fatal: false }).decode(u)) : -1;
+          let best = null;
+          for (let k = 1; k < 256; k++) { const x = xorBytes(u, [k]); if (printableRatio(x) > 0.9) { const t = new TextDecoder("utf-8", { fatal: false }).decode(x); const es = englishScore(t); if (!best || es > best.es) best = { k: k, t: t, es: es }; } }
+          if (best && best.es > 20 && best.es > straightEs + 8) results.push({ recipe: st.recipe.concat("XOR 0x" + best.k.toString(16).padStart(2, "0")), text: best.t, score: scoreAll(best.t) + 6 });
+        }
+        if (pr <= 0.85 && st.recipe.length) { const magic = identifyMagic(u); if (magic) results.push({ recipe: st.recipe, text: "[" + magic + "]  " + hexPrefix(u, 16) + " …", score: 55, binary: true }); }
       }
     }
     const uniq = {};
@@ -870,7 +948,7 @@
     // 암호문 + 사전 로드됨 → 자동으로 대입까지
     if ((!lastSolve || !lastSolve.length) && wordlistText && looksCipher($("ct").value)) scheduleDict();
   }
-  function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase" }; return m[$("scheme").value] || "복호화"; }
+  function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase", rc4: "RC4", des: "DES", "3des": "Triple DES" }; return m[$("scheme").value] || "복호화"; }
   function pretty(o) { try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); } }
   function renderTokenFinal(box, c) {
     const d = c.token.decoded;
@@ -1026,13 +1104,120 @@
     }
   }
 
+  /* ---------- 고급 도구 (해시 · XOR · ROT · 공유/내보내기) ---------- */
+  function getInputBytes() {
+    const v = $("ct").value.trim();
+    if (!v) return new Uint8Array(0);
+    try { const u = waToU8(parseCipher(v).wa); if (u.length) return u; } catch (e) {}
+    return waToU8(enc.Utf8.parse(v));
+  }
+  function bytesView(u8) { return printableRatio(u8) > 0.85 ? new TextDecoder("utf-8", { fatal: false }).decode(u8) : u8ToHex(u8); }
+  function updateTools() {
+    if (!enc) return;
+    const v = $("ct").value, grid = $("hashGrid"); grid.textContent = "";
+    if (v) {
+      const wa = enc.Utf8.parse(v);
+      [["MD5", CryptoJS.MD5], ["SHA1", CryptoJS.SHA1], ["SHA256", CryptoJS.SHA256], ["SHA512", CryptoJS.SHA512]].forEach((pair) => {
+        let h = ""; try { h = pair[1](wa).toString(); } catch (e) {}
+        const row = el("div", "hash-row");
+        row.appendChild(el("span", "hash-k", pair[0]));
+        row.appendChild(el("span", "hash-v", h));
+        const b = el("button", "a-apply", "복사"); b.type = "button"; b.onclick = () => copy(h, b);
+        row.appendChild(b); grid.appendChild(row);
+      });
+    } else grid.appendChild(el("div", "solve-text", "위에 입력이 없습니다."));
+    updateRot();
+  }
+  function updateRot() {
+    if (!$("rotN")) return;
+    const n = +$("rotN").value; $("rotVal").textContent = n;
+    const v = $("ct").value;
+    $("rotOut").textContent = v ? (rotStr(v, n).slice(0, 500) || "(변화 없음)") : "(입력 없음)";
+  }
+  function runXor() {
+    const o = $("xorOut"); o.classList.remove("hidden"); o.textContent = "";
+    const u = getInputBytes();
+    if (!u.length) { o.textContent = "위에 입력이 없습니다."; return; }
+    let kb = null; try { kb = waToU8(parseWA($("xorKey").value, $("xorFmt").value)); } catch (e) {}
+    if (!kb || !kb.length) { o.textContent = "XOR 키를 입력하세요."; return; }
+    o.textContent = bytesView(xorBytes(u, kb));
+  }
+  function runXorBrute() {
+    const o = $("xorOut"); o.classList.remove("hidden"); o.textContent = "";
+    const u = getInputBytes();
+    if (!u.length) { o.textContent = "위에 입력이 없습니다."; return; }
+    const cands = [];
+    for (let k = 0; k < 256; k++) { const x = xorBytes(u, [k]); if (printableRatio(x) > 0.9) { const t = new TextDecoder("utf-8", { fatal: false }).decode(x); cands.push({ k: k, t: t, es: englishScore(t) }); } }
+    cands.sort((a, b) => b.es - a.es);
+    if (!cands.length) { o.textContent = "읽을 수 있는 결과 없음 (다중바이트 키일 수 있음)."; return; }
+    o.appendChild(el("div", "solve-text", "가장 그럴듯한 키 " + Math.min(cands.length, 8) + "개:"));
+    cands.slice(0, 8).forEach((c) => {
+      const row = el("div", "hash-row");
+      row.appendChild(el("span", "hash-k", "0x" + c.k.toString(16).padStart(2, "0")));
+      row.appendChild(el("span", "hash-v", c.t.length > 80 ? c.t.slice(0, 80) + " …" : c.t));
+      const b = el("button", "a-apply", "복사"); b.type = "button"; b.onclick = () => copy(c.t, b);
+      row.appendChild(b); o.appendChild(row);
+    });
+  }
+  function shareState() {
+    const st = {}; ["scheme", "key", "keyFmt", "iv", "ivFmt", "ctFmt", "ct"].forEach((f) => (st[f] = $(f).value));
+    try { return "#s=" + btoa(unescape(encodeURIComponent(JSON.stringify(st)))); } catch (e) { return ""; }
+  }
+  function loadFromHash() {
+    try {
+      const m = location.hash.match(/#s=(.+)/); if (!m) return false;
+      const st = JSON.parse(decodeURIComponent(escape(atob(m[1]))));
+      ["scheme", "key", "keyFmt", "iv", "ivFmt", "ctFmt", "ct"].forEach((f) => { if (st[f] != null && $(f)) $(f).value = st[f]; });
+      return true;
+    } catch (e) { return false; }
+  }
+  function opensslCode() {
+    const s = $("scheme").value, key = $("key").value, iv = $("iv").value;
+    if (s === "pass") return "openssl enc -d -aes-256-cbc -a -pbkdf2 -pass pass:'" + key + "' -in cipher.b64";
+    const alg = { cbc: "aes-128-cbc", ctr: "aes-128-ctr", ecb: "aes-128-ecb", des: "des-cbc", "3des": "des-ede3-cbc" }[s];
+    if (!alg) return "openssl은 " + schemeLabel() + " 을(를) 이 형태로 직접 지원하지 않습니다.";
+    return "openssl enc -d -" + alg + " -K " + (key || "<key-hex>") + (iv ? " -iv " + iv : "") + " -in cipher.bin -out plain.bin";
+  }
+  function pythonCode() {
+    const s = $("scheme").value, key = $("key").value, iv = $("iv").value, kf = $("keyFmt").value;
+    const keyExpr = kf === "Hex" ? "bytes.fromhex('" + key + "')" : "b'" + key + "'";
+    if (s === "gcm") return "from Crypto.Cipher import AES\nc = AES.new(" + keyExpr + ", AES.MODE_GCM, nonce=bytes.fromhex('" + iv + "'))\npt = c.decrypt_and_verify(ct, tag)";
+    if (s === "cbc" || s === "ecb" || s === "ctr") {
+      const mode = { cbc: "MODE_CBC", ecb: "MODE_ECB", ctr: "MODE_CTR" }[s];
+      return "from Crypto.Cipher import AES\nc = AES.new(" + keyExpr + ", AES." + mode + (s === "ecb" ? "" : ", iv=bytes.fromhex('" + iv + "')") + ")\npt = c.decrypt(ct)";
+    }
+    if (s === "rc4") return "from Crypto.Cipher import ARC4\npt = ARC4.new(" + keyExpr + ").decrypt(ct)";
+    return "# " + schemeLabel() + " 코드 예시는 생략";
+  }
+
   /* ---------- 복호화 (ct → pt) ---------- */
+  function blockCipher(algo, input, dir) {
+    const key = parseWA($("key").value, $("keyFmt").value);
+    const useIv = $("iv").value.trim().length > 0;
+    const cfg = { mode: useIv ? CryptoJS.mode.CBC : CryptoJS.mode.ECB, padding: padObj($("padding").value) };
+    if (useIv) cfg.iv = parseWA($("iv").value, $("ivFmt").value);
+    if (dir === "dec") {
+      const wa = algo.decrypt({ ciphertext: parseCipher(input).wa }, key, cfg);
+      if (wa.sigBytes <= 0) throw new Error("empty");
+      const res = decodeWA(wa); res.note = (res.note ? res.note + " · " : "") + (useIv ? "CBC" : "ECB"); return res;
+    }
+    const e = algo.encrypt(enc.Utf8.parse(input), key, cfg);
+    return { text: fmtBytes(e.ciphertext), note: useIv ? "CBC" : "ECB" };
+  }
   async function decrypt(scheme, input) {
     if (scheme === "pass") {
       const wa = CryptoJS.AES.decrypt(input, $("key").value);
       if (wa.sigBytes <= 0) throw new Error("empty");
       return decodeWA(wa);
     }
+    if (scheme === "rc4") {
+      const key = parseWA($("key").value, $("keyFmt").value);
+      const wa = CryptoJS.RC4.decrypt({ ciphertext: parseCipher(input).wa }, key);
+      if (wa.sigBytes <= 0) throw new Error("empty");
+      return decodeWA(wa);
+    }
+    if (scheme === "des") return blockCipher(CryptoJS.DES, input, "dec");
+    if (scheme === "3des") return blockCipher(CryptoJS.TripleDES, input, "dec");
     if (scheme === "gcm") {
       const keyU8 = gcmKey();
       const aadU8 = gcmAad();
@@ -1078,6 +1263,12 @@
     if (scheme === "pass") {
       return { text: CryptoJS.AES.encrypt(input, $("key").value).toString(), note: "" };
     }
+    if (scheme === "rc4") {
+      const key = parseWA($("key").value, $("keyFmt").value);
+      return { text: fmtBytes(CryptoJS.RC4.encrypt(enc.Utf8.parse(input), key).ciphertext), note: "스트림" };
+    }
+    if (scheme === "des") return blockCipher(CryptoJS.DES, input, "enc");
+    if (scheme === "3des") return blockCipher(CryptoJS.TripleDES, input, "enc");
     if (scheme === "gcm") {
       const keyU8 = gcmKey();
       const aadU8 = gcmAad();
@@ -1185,8 +1376,8 @@
     const scheme = $("scheme").value;
     const isPass = scheme === "pass";
     const isGcm  = scheme === "gcm";
-    const needsIv = scheme === "cbc" || scheme === "ctr" || scheme === "gcm";
-    const hasPad  = scheme === "cbc" || scheme === "ecb";
+    const needsIv = scheme === "cbc" || scheme === "ctr" || scheme === "gcm" || scheme === "des" || scheme === "3des";
+    const hasPad  = scheme === "cbc" || scheme === "ecb" || scheme === "des" || scheme === "3des";
 
     $("ivField").classList.toggle("hidden", isPass || !needsIv);
     $("tagField").classList.toggle("hidden", !isGcm);
@@ -1195,7 +1386,7 @@
     $("keyLabel").textContent = isPass ? "비밀번호 (passphrase)" : "키";
     $("keyFmt").classList.toggle("hidden", isPass);
     $("ctFmt").classList.toggle("hidden", isPass); // passphrase 출력은 항상 OpenSSL base64
-    $("iv").placeholder = isGcm ? "nonce (보통 12바이트)" : "초기화 벡터 (보통 16바이트)";
+    $("iv").placeholder = isGcm ? "nonce (보통 12바이트)" : (scheme === "des" || scheme === "3des") ? "IV 8바이트 (비우면 ECB)" : "초기화 벡터 (보통 16바이트)";
     toggleIvPrepend();
     liveCheck();
   }
@@ -1207,7 +1398,7 @@
   function liveCheck() {
     if (!enc) return;
     const scheme = $("scheme").value, msgs = [];
-    if (scheme !== "pass" && $("key").value) {
+    if (["cbc", "gcm", "ctr", "ecb"].indexOf(scheme) >= 0 && $("key").value) {
       const kl = keyBytes();
       if (kl >= 0 && ![16, 24, 32].includes(kl)) msgs.push("키 " + kl + "바이트 — AES는 16/24/32 필요");
     }
@@ -1281,6 +1472,13 @@
     $("dictRun").onclick = () => runDict(false);
     $("dictStop").onclick = stopDict;
 
+    $("rotN").addEventListener("input", updateRot);
+    $("xorRun").onclick = runXor;
+    $("xorBrute").onclick = runXorBrute;
+    $("shareLink").onclick = () => { const h = shareState(); if (h) { history.replaceState(null, "", location.pathname + h); copy(location.href, $("shareLink")); } };
+    $("exportOpenssl").onclick = () => { const o = $("exportOut"); o.classList.remove("hidden"); o.textContent = opensslCode(); };
+    $("exportPython").onclick = () => { const o = $("exportOut"); o.classList.remove("hidden"); o.textContent = pythonCode(); };
+
     $("doEnc").onclick = () => { lastSrc = "pt"; convert("pt"); };
     $("doDec").onclick = () => { lastSrc = "ct"; convert("ct"); };
     document.addEventListener("keydown", (e) => {
@@ -1318,6 +1516,7 @@
     enc = CryptoJS.enc;
     wire();
     load();
+    if (loadFromHash()) { lastSrc = "ct"; }
     syncFields();
     analyzeNow();
     if ($("key").value.trim()) $("aesBox").open = true;
