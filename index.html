@@ -381,9 +381,27 @@
           </div>
           <div class="opts">
             <button class="link" id="xorRun" type="button">XOR 적용</button>
-            <button class="link" id="xorBrute" type="button">단일바이트 브루트포스 (0~255)</button>
+            <button class="link" id="xorBrute" type="button">단일바이트 브루트</button>
+            <button class="link" id="xorRepeat" type="button">반복키 XOR 자동 (Vigenère)</button>
           </div>
           <div class="a-prev hidden" id="xorOut"></div>
+        </div>
+
+        <div class="field">
+          <label for="jwtKey">JWT 서명 검증 (위 입력이 JWT일 때)</label>
+          <textarea id="jwtKey" placeholder="HS256: 비밀키 문자열  /  RS·ES: -----BEGIN PUBLIC KEY----- PEM" spellcheck="false" style="min-height:56px;"></textarea>
+          <div class="opts"><button class="link" id="jwtVerify" type="button">서명 검증 실행</button></div>
+          <div class="a-prev hidden" id="jwtvOut"></div>
+        </div>
+
+        <div class="field">
+          <label for="rsaKey">RSA 개인키 복호화 (위 입력이 RSA 암호문 base64/hex)</label>
+          <textarea id="rsaKey" placeholder="-----BEGIN PRIVATE KEY-----  (또는 RSA PRIVATE KEY)" spellcheck="false" style="min-height:80px;"></textarea>
+          <div class="input-group" style="margin-top:8px;">
+            <input id="rsaPass" type="text" placeholder="개인키 비밀번호(암호화된 PEM만, 없으면 비움)" autocomplete="off" spellcheck="false" />
+            <button class="btn ghost" id="rsaRun" type="button" style="flex:none;">RSA 복호화</button>
+          </div>
+          <div class="a-prev hidden" id="rsaOut"></div>
         </div>
 
         <div class="field">
@@ -890,6 +908,45 @@
   }
   function scoreAll(t) { return scoreText(t) + Math.min(45, Math.round(englishScore(t))); }
   function xorBytes(u8, keyBytes) { const r = new Uint8Array(u8.length); for (let i = 0; i < u8.length; i++) r[i] = u8[i] ^ keyBytes[i % keyBytes.length]; return r; }
+  function hamming(a, b) { let d = 0, n = Math.min(a.length, b.length); for (let i = 0; i < n; i++) { let x = a[i] ^ b[i]; while (x) { d += x & 1; x >>= 1; } } return d; }
+  function charScore(c) {
+    if (c === 0x20) return 12;                     // 공백
+    if (c >= 0x61 && c <= 0x7a) return 8;          // 소문자
+    if (c >= 0x41 && c <= 0x5a) return 4;          // 대문자
+    if (c >= 0x30 && c <= 0x39) return 2;          // 숫자
+    if (c === 0x2e || c === 0x2c || c === 0x27 || c === 0x22 || c === 0x3a) return 2;
+    if (c === 9 || c === 10 || c === 13) return 1;
+    if (c >= 0x20 && c <= 0x7e) return 0.4;
+    return -10;                                    // 비출력 페널티
+  }
+  // 반복키(Vigenère) XOR 자동 해독: 키 길이 추정(정규화 해밍) → 열별 단일바이트 브루트
+  function breakRepeatingXor(u8, maxLen) {
+    if (u8.length < 8) return null;
+    maxLen = Math.min(maxLen || 40, Math.floor(u8.length / 4));
+    const lens = [];
+    for (let L = 2; L <= maxLen; L++) {
+      const blocks = Math.min(6, Math.floor(u8.length / L) - 1);
+      if (blocks < 1) continue;
+      let tot = 0;
+      for (let b = 0; b < blocks; b++) tot += hamming(u8.subarray(b * L, (b + 1) * L), u8.subarray((b + 1) * L, (b + 2) * L)) / L;
+      lens.push({ L: L, dist: tot / blocks });
+    }
+    lens.sort((a, b) => a.dist - b.dist);
+    let best = null;
+    for (const cand of lens.slice(0, 3)) {
+      const L = cand.L, key = new Uint8Array(L);
+      for (let col = 0; col < L; col++) {
+        const colArr = []; for (let i = col; i < u8.length; i += L) colArr.push(u8[i]);
+        let bk = 0, bes = -1e9;
+        for (let k = 0; k < 256; k++) { let s = 0; for (let j = 0; j < colArr.length; j++) s += charScore(colArr[j] ^ k); if (s > bes) { bes = s; bk = k; } }
+        key[col] = bk;
+      }
+      const t = new TextDecoder("utf-8", { fatal: false }).decode(xorBytes(u8, key));
+      const sc = scoreAll(t);
+      if (!best || sc > best.sc) best = { key: key, text: t, sc: sc, L: L };
+    }
+    return best;
+  }
   function rotStr(s, n) {
     return s.replace(/[a-z]/g, (c) => String.fromCharCode((c.charCodeAt(0) - 97 + n) % 26 + 97))
             .replace(/[A-Z]/g, (c) => String.fromCharCode((c.charCodeAt(0) - 65 + n) % 26 + 65));
@@ -944,6 +1001,11 @@
             let best = null;
             for (let k = 1; k < 256; k++) { const x = xorBytes(u, [k]); if (printableRatio(x) > 0.9) { const t = new TextDecoder("utf-8", { fatal: false }).decode(x); const es = englishScore(t); if (!best || es > best.es) best = { k: k, t: t, es: es }; } }
             if (best && best.es > 20 && best.es > straightEs + 10) results.push({ recipe: st.recipe.concat("XOR 0x" + best.k.toString(16).padStart(2, "0")), text: best.t, score: scoreAll(best.t) + 4 });
+          }
+          // 반복키(Vigenère) XOR — 첫 계층·이진 데이터에 한해
+          if (st.recipe.length === 1 && u.length >= 24 && u.length <= 4096) {
+            const rk = breakRepeatingXor(u, 40);
+            if (rk && rk.key.length >= 2 && rk.sc > 75 && englishScore(rk.text) > 25) results.push({ recipe: st.recipe.concat("반복키 XOR " + rk.key.length + "B"), text: rk.text, score: rk.sc });
           }
         }
         if (pr <= 0.85 && st.recipe.length) { const magic = identifyMagic(u); if (magic) results.push({ recipe: st.recipe, text: "[" + magic + "]  " + hexPrefix(u, 16) + " …", score: 55, binary: true }); }
@@ -1110,18 +1172,15 @@
     if (found) dstat("ok", "✓ " + h.name + " 크랙 성공: \"" + found + "\" · " + words.length.toLocaleString() + "개 중 " + secs + "s");
     else dstat("bad", "✕ " + h.name + " — 사전 " + words.length.toLocaleString() + "개에서 못 찾음 · " + secs + "s");
   }
-  let hwP = null;
+  function loadScript(src) { return new Promise((res, rej) => { const s = document.createElement("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error("load " + src)); document.head.appendChild(s); }); }
+  let hwP = null, jsrsaP = null, forgeP = null;
   function loadHashwasm() {
     if (hwP) return hwP;
-    hwP = new Promise((res, rej) => {
-      if (window.hashwasm) return res(window.hashwasm);
-      const s = document.createElement("script");
-      s.src = "https://cdn.jsdelivr.net/npm/hash-wasm@4.11.0/dist/index.umd.min.js";
-      s.onload = () => res(window.hashwasm); s.onerror = () => rej(new Error("load fail"));
-      document.head.appendChild(s);
-    });
+    hwP = window.hashwasm ? Promise.resolve(window.hashwasm) : loadScript("https://cdn.jsdelivr.net/npm/hash-wasm@4.11.0/dist/index.umd.min.js").then(() => window.hashwasm);
     return hwP;
   }
+  function loadJsrsasign() { if (!jsrsaP) jsrsaP = window.KJUR ? Promise.resolve() : loadScript("https://cdn.jsdelivr.net/npm/jsrsasign@11.1.0/lib/jsrsasign-all-min.js"); return jsrsaP; }
+  function loadForge() { if (!forgeP) forgeP = window.forge ? Promise.resolve() : loadScript("https://cdn.jsdelivr.net/npm/node-forge@1.3.1/dist/forge.min.js"); return forgeP; }
   async function runHashCrack(hash, words, type, my) {
     $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
     let hw;
@@ -1273,6 +1332,50 @@
       const b = el("button", "a-apply", "복사"); b.type = "button"; b.onclick = () => copy(c.t, b);
       row.appendChild(b); o.appendChild(row);
     });
+  }
+  function runXorRepeat() {
+    const o = $("xorOut"); o.classList.remove("hidden"); o.textContent = "";
+    const u = getInputBytes();
+    if (u.length < 8) { o.textContent = "입력이 짧습니다 (8바이트 이상)."; return; }
+    const r = breakRepeatingXor(u, 40);
+    if (!r) { o.textContent = "실패."; return; }
+    o.appendChild(el("div", "solve-text", "추정 키 길이 " + r.L + " · 키(hex): " + u8ToHex(r.key)));
+    const b = el("div", "magic-out"); b.style.marginTop = "8px"; b.textContent = r.text.length > 3000 ? r.text.slice(0, 3000) + " …" : r.text;
+    o.appendChild(b);
+  }
+  async function verifyJwt() {
+    const o = $("jwtvOut"); o.classList.remove("hidden"); o.textContent = "라이브러리 로딩…";
+    const jwt = $("ct").value.trim().replace(/\s+/g, ""), parts = jwt.split(".");
+    if (parts.length < 2) { o.textContent = "위 입력이 JWT 형식이 아닙니다."; return; }
+    let alg = ""; try { alg = JSON.parse(new TextDecoder().decode(b64ToU8(parts[0]))).alg; } catch (e) {}
+    const keyText = $("jwtKey").value.trim();
+    if (!keyText) { o.textContent = "HS 비밀키 또는 RS·ES PEM 공개키를 입력하세요."; return; }
+    try {
+      await loadJsrsasign();
+      let keyObj = keyText;
+      if (/-----BEGIN/.test(keyText)) keyObj = KEYUTIL.getKey(keyText);
+      const ok = KJUR.jws.JWS.verify(jwt, keyObj, alg ? [alg] : undefined);
+      o.textContent = (ok ? "✓ 서명 유효" : "✗ 서명 불일치") + "  ·  alg=" + (alg || "?");
+    } catch (e) { o.textContent = "검증 실패: " + (e.message || e); }
+  }
+  async function rsaDecrypt() {
+    const o = $("rsaOut"); o.classList.remove("hidden"); o.textContent = "라이브러리 로딩…";
+    const pem = $("rsaKey").value.trim();
+    if (!/BEGIN/.test(pem)) { o.textContent = "PEM 개인키를 붙여넣으세요."; return; }
+    const u = getInputBytes();
+    if (!u.length) { o.textContent = "위에 RSA 암호문(base64/hex)을 넣으세요."; return; }
+    try {
+      await loadForge();
+      let key;
+      if (/ENCRYPTED/.test(pem)) key = forge.pki.decryptRsaPrivateKey(pem, $("rsaPass").value);
+      else key = forge.pki.privateKeyFromPem(pem);
+      if (!key) { o.textContent = "개인키 파싱 실패 (비밀번호를 확인하세요)."; return; }
+      let bin = ""; for (let i = 0; i < u.length; i++) bin += String.fromCharCode(u[i]);
+      let pt = null, used = "";
+      for (const sc of ["RSA-OAEP", "RSAES-PKCS1-V1_5"]) { try { pt = key.decrypt(bin, sc); used = sc; break; } catch (e) {} }
+      if (pt == null) { o.textContent = "복호화 실패 (패딩 방식/키 불일치)."; return; }
+      o.textContent = "✓ " + used + "\n" + pt;
+    } catch (e) { o.textContent = "실패: " + (e.message || e); }
   }
   function shareState() {
     const st = {}; ["scheme", "key", "keyFmt", "iv", "ivFmt", "ctFmt", "ct"].forEach((f) => (st[f] = $(f).value));
@@ -1593,6 +1696,9 @@
     $("rotN").addEventListener("input", updateRot);
     $("xorRun").onclick = runXor;
     $("xorBrute").onclick = runXorBrute;
+    $("xorRepeat").onclick = runXorRepeat;
+    $("jwtVerify").onclick = verifyJwt;
+    $("rsaRun").onclick = rsaDecrypt;
     $("shareLink").onclick = () => { const h = shareState(); if (h) { history.replaceState(null, "", location.pathname + h); copy(location.href, $("shareLink")); } };
     $("exportOpenssl").onclick = () => { const o = $("exportOut"); o.classList.remove("hidden"); o.textContent = opensslCode(); };
     $("exportPython").onclick = () => { const o = $("exportOut"); o.classList.remove("hidden"); o.textContent = pythonCode(); };
