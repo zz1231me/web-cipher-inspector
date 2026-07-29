@@ -10,7 +10,10 @@
 
 ## 주요 기능
 
-- **🪄 자동 디코드 (Magic)** — 붙여넣으면 CyberChef의 Magic처럼 가장 그럴듯한 디코드 레시피를 자동으로 찾아 연쇄 적용하고 결과를 보여줍니다. Base64 · Base64url · Hex · Base32 · URL · gzip/zlib를 재귀적으로 관통 (예: `Base64 → gzip → JSON`).
+- **자동 해독 (Auto-solve)** — 붙여넣으면 여러 디코드 조합을 폭넓게 탐색(BFS)해 읽을 수 있는 평문 후보를 순위로 제시. Base64 · Base64url · Hex · Base32 · Base58 · URL · gzip/zlib에 더해 **단일바이트 XOR 브루트포스**와 **Caesar/ROT-N**까지 자동 시도 (예: `Hex → XOR 0x42 → 평문`, `Base64 → gzip → JSON`). 입력 카드의 체크박스로 각 자동작업을 켜고 끕니다.
+- **사전 공격 · 크랙** — `.txt` 단어목록으로 OpenSSL/CryptoJS passphrase, 현재 방식(AES 키), 그리고 **bcrypt · argon2 해시**(hash-wasm)를 자동 대입. 암호문/해시를 넣고 목록만 올리면 자동 실행.
+- **추가 암호 · 도구** — AES 외 RC4 · DES · Triple DES. 고급 도구에 해시 8종(MD5·SHA1·SHA256·SHA512 + SHA3·RIPEMD160·BLAKE2b·CRC32), XOR(키/브루트), ROT-N, 공유 링크(#s=), openssl/python 코드 내보내기.
+- **오픈소스 활용** — [CryptoJS](https://github.com/brix/crypto-js) 코어, [hash-wasm](https://github.com/Daninet/hash-wasm)으로 SHA3/RIPEMD/BLAKE2/CRC32 및 bcrypt·argon2 검증(필요 시 지연 로드).
 - **📊 시각적 종합 분석** — 암호문을 넣으면 "무엇인지 · 어떻게 구성됐는지 · 신뢰도(%)"를 아이콘 판정 + 신뢰도 막대 + 레이어 파이프라인 + 엔트로피 게이지 + 블록 정렬/선두 바이트 타일로 시각화. 매직넘버(gzip·PNG·PDF·DER·ZIP…), 토큰(JWT·JWE·PASETO·Fernet), 시크릿(Stripe·GitHub·AWS·bcrypt…), 해시(MD5·SHA·ObjectId), UUID/ULID 자동 식별.
 - **🔑 사전 공격** — `.txt` 단어목록을 올려 OpenSSL/CryptoJS passphrase 암호문을 무차별 대입 복호화. 발견 시 비밀번호와 평문을 자동 표시.
 - **양방향 라이브 변환** — 평문 ⇄ 암호문이 한 화면에. 한쪽에 입력·붙여넣기하면 반대쪽이 자동으로 채워집니다(자동 변환 토글 가능).

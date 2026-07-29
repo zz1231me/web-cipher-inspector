@@ -6,42 +6,46 @@
 <title>Cipher Inspector — 점검용 AES 워크벤치</title>
 <style>
   :root {
-    --bg:#f5f5f7; --card:#ffffff; --fill:#f0f0f3; --fill-2:#fbfbfd;
-    --ink:#1d1d1f; --ink2:#6e6e73; --ink3:#8a8a8e;
-    --line:rgba(0,0,0,.10); --line-2:rgba(0,0,0,.06);
-    --accent:#0071e3; --accent-press:#0064d1; --accent-soft:rgba(0,113,227,.10);
-    --ok:#248a3d; --warn:#c9372c;
-    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
-    --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","SF Pro Display",system-ui,"Segoe UI",Roboto,sans-serif;
+    --bg:#e9ebee; --card:#ffffff; --fill:#f2f3f5; --fill-2:#f7f8fa;
+    --ink:#12151a; --ink2:#4a505b; --ink3:#828994;
+    --line:#d3d7dd; --line-2:#e3e6ea;
+    --accent:#2b4a7e; --accent-press:#213a66; --accent-soft:rgba(43,74,126,.09);
+    --ok:#1c7146; --warn:#a53b28;
+    --radius:7px; --radius-sm:5px;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",system-ui,sans-serif;
   }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; }
   body {
     background:var(--bg); color:var(--ink); font-family:var(--sans);
-    display:flex; justify-content:center; padding:52px 20px 80px; min-height:100%;
+    display:flex; justify-content:center; padding:26px 18px 60px; min-height:100%;
     -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
   }
-  .wrap { width:100%; max-width:840px; }
+  .wrap { width:100%; max-width:880px; }
 
-  /* Hero */
-  .hero { text-align:center; margin:6px 0 30px; }
-  .mark { width:52px; height:52px; margin:0 auto 15px; border-radius:14px; position:relative;
-    background:linear-gradient(180deg,#0a84ff,#0071e3); box-shadow:0 8px 20px -8px rgba(0,113,227,.65); }
-  .mark::after { content:""; position:absolute; left:50%; top:15px; transform:translateX(-50%); width:12px; height:11px; border:2.5px solid #fff; border-bottom:none; border-radius:7px 7px 0 0; }
-  .mark::before { content:""; position:absolute; left:50%; top:23px; transform:translateX(-50%); width:20px; height:15px; border-radius:3px; background:#fff; }
-  .hero h1 { font-size:27px; font-weight:600; letter-spacing:-.021em; margin:0; }
-  .hero p { font-size:15px; color:var(--ink2); margin:7px 0 0; letter-spacing:-.01em; }
+  /* Header — 좌측 정렬, 무채색, 절제 */
+  .hero { display:flex; align-items:center; gap:11px; margin:0 2px 18px; padding-bottom:16px; border-bottom:1px solid var(--line); }
+  .mark { width:30px; height:30px; flex:none; border:1.5px solid var(--ink); border-radius:6px; position:relative; }
+  .mark::after { content:""; position:absolute; left:50%; top:8px; transform:translateX(-50%); width:9px; height:8px; border:1.5px solid var(--ink); border-bottom:none; border-radius:5px 5px 0 0; }
+  .mark::before { content:""; position:absolute; left:50%; top:14px; transform:translateX(-50%); width:15px; height:11px; border-radius:2px; background:var(--ink); }
+  .hero h1 { font-family:var(--mono); font-size:16px; font-weight:600; letter-spacing:-.01em; margin:0; }
+  .hero p { font-size:12px; color:var(--ink3); margin:2px 0 0; }
+  .hero .htext { display:flex; flex-direction:column; }
 
   /* Card */
-  .card { background:var(--card); border:1px solid var(--line-2); border-radius:20px; padding:28px;
-    box-shadow:0 1px 1px rgba(0,0,0,.03), 0 14px 34px -14px rgba(0,0,0,.13); }
-  .wrap > .card, .wrap > details.card { margin-bottom:16px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:20px; box-shadow:0 1px 2px rgba(20,25,35,.04); }
+  .wrap > .card, .wrap > details.card { margin-bottom:12px; }
 
   /* Primary input */
   .input-head { display:flex; align-items:center; gap:8px; margin-bottom:12px; flex-wrap:wrap; }
   .input-title { font-size:16px; font-weight:600; color:var(--ink); margin-right:auto; letter-spacing:-.015em; }
   .input-head .mini { margin-left:0; }
-  textarea.ct-main { min-height:136px; font-size:14px; }
+  textarea.ct-main { min-height:120px; font-size:13.5px; }
+  .auto-strip { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; padding:9px 11px; background:var(--fill); border:1px solid var(--line); border-radius:var(--radius-sm); }
+  .auto-label { font-size:11px; font-weight:600; color:var(--ink3); text-transform:uppercase; letter-spacing:.04em; }
+  .chk { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink2); cursor:pointer; user-select:none; }
+  .chk input { width:14px; height:14px; accent-color:var(--accent); margin:0; }
 
   /* Collapsible section cards */
   details.details { padding:0; }
@@ -65,13 +69,13 @@
   .suffix { width:112px; flex:none; }
 
   input[type=text], select, textarea {
-    width:100%; color:var(--ink); background:var(--fill); border:1px solid transparent; border-radius:12px;
-    padding:12px 14px; font-size:15px; line-height:1.45; transition:box-shadow .15s, background .15s, border-color .15s;
+    width:100%; color:var(--ink); background:var(--fill); border:1px solid var(--line); border-radius:var(--radius-sm);
+    padding:9px 11px; font-size:14px; line-height:1.45; transition:box-shadow .12s, border-color .12s;
   }
-  input[type=text], textarea { font-family:var(--mono); font-size:13.5px; }
-  select { font-family:var(--sans); font-size:14px; }
-  textarea { min-height:164px; resize:vertical; white-space:pre-wrap; word-break:break-all; background:var(--fill-2); border-color:var(--line-2); line-height:1.55; }
-  input:focus, select:focus, textarea:focus { outline:none; background:#fff; border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
+  input[type=text], textarea { font-family:var(--mono); font-size:13px; }
+  select { font-family:var(--sans); font-size:13px; }
+  textarea { min-height:150px; resize:vertical; white-space:pre-wrap; word-break:break-all; background:var(--fill-2); line-height:1.5; }
+  input:focus, select:focus, textarea:focus { outline:none; background:#fff; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
   input:disabled { opacity:.45; cursor:not-allowed; }
   ::placeholder { color:var(--ink3); }
   select { cursor:pointer; appearance:none; padding-right:34px;
@@ -93,10 +97,10 @@
   .toolbar-actions { margin-left:auto; display:flex; gap:8px; }
   .switch { display:inline-flex; align-items:center; gap:10px; font-size:14px; color:var(--ink); cursor:pointer; user-select:none; }
   .switch input { appearance:none; width:44px; height:26px; border-radius:26px; background:#e3e3e8; position:relative; cursor:pointer; transition:background .2s; margin:0; flex:none; }
-  .switch input:checked { background:#34c759; }
+  .switch input:checked { background:var(--accent); }
   .switch input::after { content:""; position:absolute; top:2px; left:2px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:transform .2s; }
   .switch input:checked::after { transform:translateX(18px); }
-  .btn { font-family:var(--sans); font-size:14px; font-weight:590; border:1px solid transparent; border-radius:980px; padding:9px 18px; cursor:pointer; transition:background .15s, transform .1s; }
+  .btn { font-family:var(--sans); font-size:14px; font-weight:590; border:1px solid transparent; border-radius:var(--radius-sm); padding:9px 18px; cursor:pointer; transition:background .15s, transform .1s; }
   .btn:active { transform:scale(.975); }
   .btn.primary { background:var(--accent); color:#fff; }
   .btn.primary:hover { background:var(--accent-press); }
@@ -111,29 +115,30 @@
   .mini { width:120px; height:32px; padding:6px 30px 6px 12px; font-size:13px; margin-left:auto; }
   .pane-head .chip { margin-left:auto; }
   .pane-head .mini + .chip { margin-left:8px; }
-  .chip { font-family:var(--sans); font-size:12px; font-weight:560; color:var(--accent); background:var(--accent-soft); border:0; border-radius:980px; padding:5px 13px; cursor:pointer; transition:background .15s; }
-  .chip:hover { background:rgba(0,113,227,.17); }
+  .chip { font-family:var(--sans); font-size:12px; font-weight:560; color:var(--ink2); background:var(--fill); border:1px solid var(--line); border-radius:var(--radius-sm); padding:4px 11px; cursor:pointer; transition:.12s; }
+  .chip:hover { background:#eaecef; color:var(--ink); }
   .pstatus { font-family:var(--mono); font-size:11.5px; line-height:1.5; margin:9px 2px 0; min-height:16px; }
   .pstatus.ok { color:var(--ok); } .pstatus.bad { color:var(--warn); } .pstatus.idle { color:var(--ink3); }
   textarea.flash { border-color:var(--accent); box-shadow:0 0 0 4px var(--accent-soft); }
 
   /* Dictionary attack */
   .dict-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-  #wordlist { flex:1; min-width:180px; font-family:var(--sans); font-size:12.5px; color:var(--ink2); background:var(--fill); border:1px solid transparent; border-radius:12px; padding:9px 12px; cursor:pointer; }
-  #wordlist::file-selector-button { font-family:var(--sans); font-size:12px; font-weight:560; color:var(--accent); background:var(--card); border:1px solid var(--line); border-radius:980px; padding:5px 13px; margin-right:11px; cursor:pointer; }
+  #wordlist { flex:1; min-width:180px; font-family:var(--sans); font-size:12.5px; color:var(--ink2); background:var(--fill); border:1px solid var(--line); border-radius:var(--radius-sm); padding:8px 11px; cursor:pointer; }
+  #wordlist::file-selector-button { font-family:var(--sans); font-size:12px; font-weight:560; color:var(--ink); background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); padding:5px 12px; margin-right:11px; cursor:pointer; }
   #dictRun { flex:none; }
 
   /* Magic — 자동 디코드 */
-  .magic { margin-top:20px; padding:18px; background:linear-gradient(180deg,#eef5ff,#f4f6fb); border:1px solid rgba(0,113,227,.18); border-radius:16px; }
+  .magic { margin-top:16px; padding:15px; background:var(--fill); border:1px solid var(--line); border-left:3px solid var(--accent); border-radius:var(--radius-sm); }
   .magic-t { font-size:12px; font-weight:600; color:var(--accent); margin-bottom:12px; letter-spacing:.01em; }
   .magic-recipe { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:12px; }
-  .magic-out { padding:12px 14px; background:var(--card); border:1px solid var(--line-2); border-radius:11px; font-family:var(--mono); font-size:12.5px; color:var(--ink); white-space:pre-wrap; word-break:break-all; max-height:220px; overflow:auto; line-height:1.55; }
+  .magic-out { padding:11px 12px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); font-family:var(--mono); font-size:12.5px; color:var(--ink); white-space:pre-wrap; word-break:break-all; max-height:220px; overflow:auto; line-height:1.55; }
   .magic-actions { margin-top:11px; display:flex; gap:8px; flex-wrap:wrap; }
-  .magic.ok { background:linear-gradient(180deg,#eafaf1,#f4f8f5); border-color:rgba(36,138,61,.24); }
+  .magic.ok { background:#f1f6f3; border-color:var(--line); border-left-color:var(--ok); }
+  .magic.hint { border-left-color:var(--warn); }
   .magic.ok .magic-t { color:var(--ok); }
   .magic.hint { background:var(--fill); border-color:var(--line); }
   .magic-sub { font-size:12.5px; color:var(--ink2); margin:-4px 0 12px; line-height:1.5; }
-  .solve-item { margin-top:10px; padding:11px 13px; background:var(--card); border:1px solid var(--line-2); border-radius:10px; }
+  .solve-item { margin-top:10px; padding:11px 13px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); }
   .solve-recipe { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:8px; }
   .solve-recipe .a-step { font-size:11px; padding:4px 9px; }
   .solve-text { font-family:var(--mono); font-size:11.5px; color:var(--ink2); white-space:pre-wrap; word-break:break-all; line-height:1.5; }
@@ -145,11 +150,11 @@
   input[type=range] { width:100%; accent-color:var(--accent); margin:4px 0 0; }
 
   /* Analysis — visual */
-  .analysis { margin-top:20px; padding:20px; background:var(--fill); border-radius:16px; }
+  .analysis { margin-top:16px; padding:16px; background:var(--fill); border:1px solid var(--line); border-radius:var(--radius-sm); }
   .a-title { font-size:11px; font-weight:600; color:var(--ink3); letter-spacing:.04em; text-transform:uppercase; margin-bottom:15px; }
 
   .a-verdict { display:flex; align-items:center; gap:14px; }
-  .a-icon { width:48px; height:48px; flex:none; border-radius:13px; background:var(--card); display:flex; align-items:center; justify-content:center; font-size:25px; box-shadow:0 1px 3px rgba(0,0,0,.07); }
+  .a-icon { width:42px; height:42px; flex:none; border-radius:var(--radius-sm); background:var(--card); border:1px solid var(--line); display:flex; align-items:center; justify-content:center; font-size:21px; }
   .a-vtext { flex:1; min-width:0; }
   .a-vlabel { font-size:18px; font-weight:600; color:var(--ink); letter-spacing:-.015em; }
   .a-vsub { font-size:12.5px; color:var(--ink2); margin-top:3px; font-family:var(--mono); word-break:break-all; line-height:1.4; }
@@ -167,20 +172,20 @@
   .a-arrow { color:var(--ink3); font-size:12px; }
 
   .a-stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
-  .a-tile { background:var(--card); border:1px solid var(--line-2); border-radius:11px; padding:11px 13px; }
+  .a-tile { background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); padding:10px 12px; }
   .a-tile-k { font-size:10px; color:var(--ink3); text-transform:uppercase; letter-spacing:.04em; }
   .a-tile-v { font-size:13px; font-weight:600; color:var(--ink); margin-top:4px; font-family:var(--mono); word-break:break-all; }
   .a-meter { height:5px; border-radius:5px; background:rgba(0,0,0,.09); margin-top:8px; overflow:hidden; }
-  .a-meter > i { display:block; height:100%; background:linear-gradient(90deg,#34c759,#0071e3); border-radius:5px; }
+  .a-meter > i { display:block; height:100%; background:var(--accent); border-radius:5px; }
 
   .a-other { display:flex; align-items:center; gap:11px; padding:5px 0; }
   .a-other-n { font-size:12.5px; font-weight:600; color:var(--ink); width:104px; flex:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .a-other .a-bar { flex:1; margin:0; }
   .a-other-p { font-size:11.5px; color:var(--ink2); width:32px; text-align:right; font-variant-numeric:tabular-nums; }
 
-  .a-apply { font-family:var(--sans); font-size:11px; font-weight:560; color:var(--accent); background:var(--card); border:1px solid var(--line); border-radius:980px; padding:4px 13px; cursor:pointer; white-space:nowrap; }
+  .a-apply { font-family:var(--sans); font-size:11px; font-weight:560; color:var(--accent); background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); padding:4px 13px; cursor:pointer; white-space:nowrap; }
   .a-apply:hover { border-color:var(--accent); background:#fff; }
-  .a-prev { margin-top:9px; padding:10px 12px; background:var(--card); border:1px solid var(--line-2); border-radius:10px; font-family:var(--mono); font-size:11.5px; color:var(--ink2); white-space:pre-wrap; word-break:break-all; max-height:150px; overflow:auto; line-height:1.5; }
+  .a-prev { margin-top:9px; padding:10px 12px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius-sm); font-family:var(--mono); font-size:11.5px; color:var(--ink2); white-space:pre-wrap; word-break:break-all; max-height:150px; overflow:auto; line-height:1.5; }
   .a-prev b { color:var(--accent); font-weight:600; }
 
   .foot { font-size:12px; color:var(--ink3); text-align:center; margin:24px 8px 0; line-height:1.7; }
@@ -202,13 +207,15 @@
   <div class="wrap">
     <header class="hero">
       <div class="mark" aria-hidden="true"></div>
-      <h1>Cipher Inspector</h1>
-      <p>AES 암복호화 · 형식 자동 분석 워크벤치</p>
+      <div class="htext">
+        <h1>Cipher Inspector</h1>
+        <p>암호문 분석 · 자동 디코드 · 복호화 워크벤치</p>
+      </div>
     </header>
 
     <div class="card">
       <div class="input-head">
-        <span class="input-title">🔎 데이터 · 암호문 붙여넣기</span>
+        <span class="input-title">입력 · 암호문 / 인코딩 / 해시</span>
         <select id="ctFmt" class="mini">
           <option value="Auto" id="autoOpt">자동감지</option>
           <option value="Base64">Base64</option>
@@ -218,7 +225,14 @@
         <button class="chip" id="copyCt" type="button">복사</button>
         <button class="chip" id="clrCt" type="button">지우기</button>
       </div>
-      <textarea id="ct" class="ct-main" placeholder="여기에 붙여넣으면 무엇인지 자동 분석하고, 인코딩(Base64·Hex·URL·gzip 등)은 자동으로 풀어서 보여줍니다. 키가 없어도 됩니다."></textarea>
+      <textarea id="ct" class="ct-main" placeholder="암호문 / 인코딩 데이터 / 해시를 붙여넣으세요. 아래 체크된 작업이 자동 실행됩니다."></textarea>
+      <div class="auto-strip">
+        <span class="auto-label">자동 실행</span>
+        <label class="chk"><input type="checkbox" id="optDecode" checked /> 인코딩·압축 해독</label>
+        <label class="chk"><input type="checkbox" id="optXor" checked /> XOR·ROT</label>
+        <label class="chk"><input type="checkbox" id="optDict" checked /> 사전 대입</label>
+        <label class="chk"><input type="checkbox" id="optDecrypt" checked /> 키로 복호화</label>
+      </div>
       <div class="pstatus idle" id="ctStatus"></div>
 
       <div class="magic hidden" id="magicOut"></div>
@@ -227,7 +241,7 @@
 
     <details class="card details" id="aesBox">
       <summary class="details-sum">
-        <span class="sum-title">🔑 키로 직접 복호화 · 재암호화</span>
+        <span class="sum-title">키로 복호화 · 재암호화</span>
         <span class="sum-hint">AES-CBC/GCM/CTR/ECB · Passphrase — 키를 알 때</span>
       </summary>
       <div class="details-body">
@@ -330,8 +344,8 @@
 
     <details class="card details" id="dictBox">
       <summary class="details-sum">
-        <span class="sum-title">📚 사전 공격 (Passphrase)</span>
-        <span class="sum-hint">.txt 단어목록을 올리면 자동으로 복호화 시도</span>
+        <span class="sum-title">사전 공격 · 크랙</span>
+        <span class="sum-hint">.txt 단어목록 → Passphrase / AES 키 / bcrypt·argon2 해시 자동 대입</span>
       </summary>
       <div class="details-body">
         <div class="dict-row">
@@ -350,7 +364,7 @@
 
     <details class="card details" id="toolBox">
       <summary class="details-sum">
-        <span class="sum-title">🧰 고급 도구</span>
+        <span class="sum-title">고급 도구</span>
         <span class="sum-hint">해시 · XOR · ROT · 공유/내보내기</span>
       </summary>
       <div class="details-body">
@@ -715,7 +729,7 @@
   }
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   function pctOf(score) { return Math.max(2, Math.min(99, Math.round(score * 100))); }
-  function confColor(pct) { return pct >= 75 ? "#34c759" : pct >= 55 ? "#0071e3" : "#8a8a8e"; }
+  function confColor(pct) { return pct >= 75 ? "#1c7146" : pct >= 55 ? "#2b4a7e" : "#828994"; }
   function entLabel(e) { return e >= 0.85 ? "높음" : e >= 0.6 ? "보통" : "낮음"; }
   function confBar(pct) { const bar = el("div", "a-bar"); const fill = el("i"); fill.style.width = pct + "%"; fill.style.background = confColor(pct); bar.appendChild(fill); return bar; }
   function tile(k, v) { const t = el("div", "a-tile"); t.appendChild(el("div", "a-tile-k", k)); t.appendChild(el("div", "a-tile-v", v)); return t; }
@@ -881,7 +895,8 @@
             .replace(/[A-Z]/g, (c) => String.fromCharCode((c.charCodeAt(0) - 65 + n) % 26 + 65));
   }
   // 하나의 입력을 여러 디코드 조합으로 자동 탐색(BFS)해 읽을 수 있는 평문 후보들을 수집
-  async function autoSolve(input) {
+  async function autoSolve(input, opts) {
+    opts = opts || { xor: true };
     const start = (input || "").trim();
     if (!start || start.length < 4) return [];
     const results = [], seen = new Set();
@@ -897,7 +912,7 @@
         const s = st.v.trim();
         if (st.recipe.length && printableStrRatio(s) > 0.85 && s.length >= 2) results.push({ recipe: st.recipe, text: s, score: scoreAll(s) });
         // ROT/Caesar 자동: 알파벳 위주면 최적 시프트를 후보로
-        if (/[A-Za-z]/.test(s) && printableStrRatio(s) > 0.95 && s.length >= 4 && st.recipe.indexOf("ROT") < 0 && !st.recipe.some((x) => x.indexOf("ROT") === 0)) {
+        if (opts.xor && /[A-Za-z]/.test(s) && printableStrRatio(s) > 0.95 && s.length >= 4 && st.recipe.indexOf("ROT") < 0 && !st.recipe.some((x) => x.indexOf("ROT") === 0)) {
           let best = null; const base = englishScore(s);
           for (let n = 1; n < 26; n++) { const r = rotStr(s, n); const es = englishScore(r); if (!best || es > best.es) best = { n: n, r: r, es: es }; }
           if (best && best.es > base + 12) results.push({ recipe: st.recipe.concat(best.n === 13 ? "ROT13" : "ROT-" + best.n), text: best.r, score: scoreAll(best.r) + 8 });
@@ -920,7 +935,7 @@
         const pr = printableRatio(u);
         if (pr > 0.85) enq(new TextDecoder("utf-8", { fatal: false }).decode(u), false, st.recipe.slice());
         // 단일바이트 XOR 브루트포스 — 직독이 영어스럽지 않으면 시도(출력가능 여부 무관)
-        if (st.recipe.length && u.length <= 8192 && !st.recipe.some((x) => x.indexOf("XOR") === 0)) {
+        if (opts.xor && st.recipe.length && u.length <= 8192 && !st.recipe.some((x) => x.indexOf("XOR") === 0)) {
           const straightEs = pr > 0.85 ? englishScore(new TextDecoder("utf-8", { fatal: false }).decode(u)) : -1;
           let best = null;
           for (let k = 1; k < 256; k++) { const x = xorBytes(u, [k]); if (printableRatio(x) > 0.9) { const t = new TextDecoder("utf-8", { fatal: false }).decode(x); const es = englishScore(t); if (!best || es > best.es) best = { k: k, t: t, es: es }; } }
@@ -942,11 +957,12 @@
     return !!(u && u.length >= 16 && printableRatio(u) < 0.6);
   }
   async function updateFinal(seq) {
-    lastSolve = await autoSolve($("ct").value);
+    const doDecode = !$("optDecode") || $("optDecode").checked;
+    lastSolve = doDecode ? await autoSolve($("ct").value, { xor: !$("optXor") || $("optXor").checked }) : [];
     if (seq !== anaSeq) return;
     renderFinal();
-    // 암호문 + 사전 로드됨 → 자동으로 대입까지
-    if ((!lastSolve || !lastSolve.length) && wordlistText && looksCipher($("ct").value)) scheduleDict();
+    // 암호문/해시 + 사전 로드됨 → 자동으로 대입/크랙까지
+    if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && (looksCipher($("ct").value) || isHashInput($("ct").value))) scheduleDict();
   }
   function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase", rc4: "RC4", des: "DES", "3des": "Triple DES" }; return m[$("scheme").value] || "복호화"; }
   function pretty(o) { try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); } }
@@ -1052,6 +1068,37 @@
     if (/^U2FsdGVk/.test(s)) return true;
     try { const u = b64ToU8(s.replace(/\s+/g, "")); return !!(u && u.length >= 16 && [0x53,0x61,0x6c,0x74,0x65,0x64,0x5f,0x5f].every((b, i) => u[i] === b)); } catch (e) { return false; }
   }
+  function isHashInput(s) { s = (s || "").trim(); return /^\$2[aby]\$\d{2}\$/.test(s) ? "bcrypt" : /^\$argon2(id|i|d)\$/.test(s) ? "argon2" : null; }
+  let hwP = null;
+  function loadHashwasm() {
+    if (hwP) return hwP;
+    hwP = new Promise((res, rej) => {
+      if (window.hashwasm) return res(window.hashwasm);
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/hash-wasm@4.11.0/dist/index.umd.min.js";
+      s.onload = () => res(window.hashwasm); s.onerror = () => rej(new Error("load fail"));
+      document.head.appendChild(s);
+    });
+    return hwP;
+  }
+  async function runHashCrack(hash, words, type, my) {
+    $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
+    let hw;
+    try { dstat("idle", "hash-wasm 로딩…"); hw = await loadHashwasm(); } catch (e) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); dstat("bad", "hash-wasm 로드 실패 (네트워크 확인)"); return; }
+    if (my !== dictSeq) return;
+    const verify = type === "bcrypt" ? (w) => hw.bcryptVerify({ password: w, hash: hash }) : (w) => hw.argon2Verify({ password: w, hash: hash });
+    const t0 = performance.now(); let found = null;
+    for (let i = 0; i < words.length; i++) {
+      if (my !== dictSeq) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; }
+      let ok = false; try { ok = await verify(words[i]); } catch (e) {}
+      if (ok) { found = words[i]; break; }
+      if ((i & 31) === 0) { dstat("idle", "🔓 " + type + " 크랙 " + i.toLocaleString() + " / " + words.length.toLocaleString() + " …"); await new Promise((r) => setTimeout(r, 0)); }
+    }
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    $("dictRun").disabled = false; $("dictStop").classList.add("hidden");
+    if (found) dstat("ok", "✓ " + type + " 크랙 성공: \"" + found + "\" · " + words.length.toLocaleString() + "개 중 " + secs + "s");
+    else dstat("bad", "✕ " + type + " — 사전 " + words.length.toLocaleString() + "개에서 못 찾음 · " + secs + "s");
+  }
   function stopDict() { dictSeq++; $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); dstat("idle", "중지됨"); }
   function scheduleDict() { clearTimeout(dictTimer); dictTimer = setTimeout(() => runDict(true), 400); }
   // 각 단어를 현재 방식(CBC/GCM/CTR/ECB)의 키로 대입해 복호화 시도
@@ -1067,6 +1114,10 @@
     if (!wordlistText) { if (!auto) dstat("bad", "먼저 .txt 사전 파일을 선택하세요"); return; }
     const words = wordlistText.split(/\r?\n/).map((w) => w.replace(/[\r\n]+$/, "")).filter((w) => w.length);
     if (!words.length) { dstat("bad", "사전이 비어 있습니다"); return; }
+
+    // bcrypt/argon2 해시 → hash-wasm 크랙
+    const ht = isHashInput(ct);
+    if (ht) { return runHashCrack(ct, words, ht, ++dictSeq); }
 
     const mode = $("dictMode").value, opensslLike = looksOpenSSL(ct);
     const doPass = mode === "pass" || (mode === "auto" && opensslLike);
@@ -1112,8 +1163,10 @@
     return waToU8(enc.Utf8.parse(v));
   }
   function bytesView(u8) { return printableRatio(u8) > 0.85 ? new TextDecoder("utf-8", { fatal: false }).decode(u8) : u8ToHex(u8); }
+  let toolSeq = 0;
   function updateTools() {
     if (!enc) return;
+    const my = ++toolSeq;
     const v = $("ct").value, grid = $("hashGrid"); grid.textContent = "";
     if (v) {
       const wa = enc.Utf8.parse(v);
@@ -1126,7 +1179,25 @@
         row.appendChild(b); grid.appendChild(row);
       });
     } else grid.appendChild(el("div", "solve-text", "위에 입력이 없습니다."));
+    updateExtraHashes(my);
     updateRot();
+  }
+  async function updateExtraHashes(my) {
+    if (!window.hashwasm || !$("toolBox").open) return;
+    const v = $("ct").value; if (!v) return;
+    const hw = window.hashwasm, grid = $("hashGrid");
+    const jobs = [["SHA3-256", hw.sha3(v, 256)], ["RIPEMD160", hw.ripemd160(v)], ["BLAKE2b-256", hw.blake2b(v, 256)], ["CRC32", hw.crc32(v)]];
+    for (const j of jobs) {
+      try {
+        const h = await j[1];
+        if (my !== toolSeq) return;
+        const row = el("div", "hash-row");
+        row.appendChild(el("span", "hash-k", j[0]));
+        row.appendChild(el("span", "hash-v", h));
+        const b = el("button", "a-apply", "복사"); b.type = "button"; b.onclick = () => copy(h, b);
+        row.appendChild(b); grid.appendChild(row);
+      } catch (e) {}
+    }
   }
   function updateRot() {
     if (!$("rotN")) return;
@@ -1417,7 +1488,7 @@
   const STORE = "cipherInspector.v3";
   function save() {
     try {
-      const o = { lastSrc, ivPrepend: $("ivPrepend").checked, auto: $("auto").checked };
+      const o = { lastSrc, ivPrepend: $("ivPrepend").checked, auto: $("auto").checked, optDecode: $("optDecode").checked, optXor: $("optXor").checked, optDict: $("optDict").checked, optDecrypt: $("optDecrypt").checked };
       FIELDS.forEach((f) => (o[f] = $(f).value));
       localStorage.setItem(STORE, JSON.stringify(o));
     } catch (e) {}
@@ -1428,6 +1499,7 @@
       FIELDS.forEach((f) => { if (o[f] != null && $(f)) $(f).value = o[f]; });
       if (o.ivPrepend) $("ivPrepend").checked = true;
       if (o.auto === false) $("auto").checked = false;
+      ["optDecode", "optXor", "optDict", "optDecrypt"].forEach((id) => { if (o[id] === false) $(id).checked = false; });
       if (o.lastSrc) lastSrc = o.lastSrc;
     } catch (e) {}
   }
@@ -1451,7 +1523,9 @@
     };
 
     $("pt").addEventListener("input", () => { if (!suppress) schedule("pt"); });
-    $("ct").addEventListener("input", () => { if (suppress) return; analyzeNow(); schedule("ct"); });
+    $("ct").addEventListener("input", () => { if (suppress) return; analyzeNow(); if (!$("optDecrypt") || $("optDecrypt").checked) schedule("ct"); });
+    ["optDecode", "optXor", "optDict", "optDecrypt"].forEach((id) => { $(id).onchange = () => { analyzeNow(); if ($("optDecrypt").checked) schedule("ct"); save(); }; });
+    $("toolBox").addEventListener("toggle", () => { if ($("toolBox").open) loadHashwasm().then(() => updateTools()).catch(() => {}); });
 
     $("exBtn").onclick = () => { $("ct").value = btoa('{"user":"admin","role":"guest","exp":1699999999}'); $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
     $("clrCt").onclick = () => { $("ct").value = ""; $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
