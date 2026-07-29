@@ -20,7 +20,8 @@
 - **RSA 개인키 복호화** — node-forge로 PEM 개인키(암호화 PEM은 비밀번호) 로드 후 RSA-OAEP/PKCS1 자동 복호화.
 - **오픈소스 활용(지연 로드)** — [CryptoJS](https://github.com/brix/crypto-js) 코어, [hash-wasm](https://github.com/Daninet/hash-wasm)(SHA3/RIPEMD/BLAKE2/CRC32 · bcrypt/argon2), [jsrsasign](https://github.com/kjur/jsrsasign)(JWT 검증), [node-forge](https://github.com/digitalbazaar/forge)(RSA/PEM).
 - **📊 시각적 종합 분석** — 암호문을 넣으면 "무엇인지 · 어떻게 구성됐는지 · 신뢰도(%)"를 아이콘 판정 + 신뢰도 막대 + 레이어 파이프라인 + 엔트로피 게이지 + 블록 정렬/선두 바이트 타일로 시각화. 매직넘버(gzip·PNG·PDF·DER·ZIP…), 토큰(JWT·JWE·PASETO·Fernet), 시크릿(Stripe·GitHub·AWS·bcrypt…), 해시(MD5·SHA·ObjectId), UUID/ULID 자동 식별.
-- **🔑 사전 공격** — `.txt` 단어목록을 올려 OpenSSL/CryptoJS passphrase 암호문을 무차별 대입 복호화. 발견 시 비밀번호와 평문을 자동 표시.
+- **🚀 원클릭 "전부 시도"** — 버튼 하나로 분석·자동해독·해시 생성·크랙을 한 번에 실행하고 종합 결과를 한 곳에 모아 **전체 복사/리포트 저장**. 크랙은 **내장 공용 비밀번호 목록**을 기본 사용해 파일 업로드 없이 바로 동작(자기 `.txt`를 올리면 교체).
+- **🔑 사전 공격** — 내장 목록 또는 올린 `.txt` 단어목록으로 passphrase·AES 키·해시·JWT 비밀키를 무차별 대입. 발견 시 비밀번호와 평문을 자동 표시.
 - **양방향 라이브 변환** — 평문 ⇄ 암호문이 한 화면에. 한쪽에 입력·붙여넣기하면 반대쪽이 자동으로 채워집니다(자동 변환 토글 가능).
 - **지원 방식**
   - AES-CBC / CTR / CFB / OFB / ECB (key + IV)

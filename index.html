@@ -62,6 +62,8 @@
   textarea.ct-main { min-height:120px; font-size:13.5px; }
   .auto-strip { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:10px; padding:9px 11px; background:var(--fill); border:1px solid var(--line); border-radius:var(--radius-sm); }
   .auto-label { font-size:11px; font-weight:600; color:var(--ink3); text-transform:uppercase; letter-spacing:.04em; }
+  .runall-row { display:flex; align-items:center; gap:8px; margin-top:9px; flex-wrap:wrap; }
+  .runall-row .btn.primary { flex:1; min-width:150px; }
   .chk { display:inline-flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink2); cursor:pointer; user-select:none; }
   .chk input { width:14px; height:14px; accent-color:var(--accent); margin:0; }
   .hist { margin-top:8px; border:1px solid var(--line); border-radius:var(--radius-sm); background:var(--fill); max-height:170px; overflow:auto; }
@@ -289,9 +291,14 @@
         <label class="chk"><input type="checkbox" id="optCommon" checked /> 흔한 키 자동</label>
         <label class="chk"><input type="checkbox" id="optBrute" /> 자동 브루트포스</label>
       </div>
+      <div class="runall-row">
+        <button class="btn primary" id="runAll" type="button">🚀 전부 시도 (딸깍)</button>
+        <button class="chip" id="copyAllRes" type="button">📋 전체 결과 복사</button>
+      </div>
       <div class="pstatus idle" id="ctStatus"></div>
 
       <div class="magic hidden" id="magicOut"></div>
+      <div class="magic hidden" id="allReport"></div>
       <div class="analysis hidden" id="analysis"></div>
         </div>
       </div>
@@ -1450,7 +1457,7 @@
   var ENFREQ = { 32: 15, 101: 12.7, 116: 9.1, 97: 8.2, 111: 7.5, 105: 7, 110: 6.7, 115: 6.3, 104: 6.1, 114: 6, 100: 4.3, 108: 4, 99: 2.8, 117: 2.8, 109: 2.4, 119: 2.4, 102: 2.2, 103: 2, 121: 2, 112: 1.9, 98: 1.5, 118: 1, 107: 0.8, 106: 0.15, 120: 0.15, 113: 0.1, 122: 0.07 };
   // 영문 판정 (ROT/Atbash): 사전 단어 매칭 + 카이제곱 (짧은 텍스트 오판 방지)
   var WORDSET = new Set("the be to of and a in that have it for not on with he as you do at this but his by from they we her she or an will my one all would there their what so up if about who which go me when make can like time no just know take into year good some them see other than then now look only come over think back after use how work first way even want any give day us hello world message secret password flag admin user login test name email attack cipher decrypt encrypt hi yes no ok error true false root pass".split(" "));
-  function wordHits(s) { const ws = s.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 2); let h = 0; for (const w of ws) if (WORDSET.has(w)) h++; return h; }
+  function wordHits(s) { const ws = s.toLowerCase().split(/[^a-z]+/).filter((w) => w.length >= 3); let h = 0; for (const w of ws) if (WORDSET.has(w)) h++; return h; }
   function chiEnglish(s) { const cnt = new Array(26).fill(0); let n = 0; for (let i = 0; i < s.length; i++) { const c = s.charCodeAt(i); const lc = (c >= 65 && c <= 90) ? c + 32 : c; if (lc >= 97 && lc <= 122) { cnt[lc - 97]++; n++; } } if (n < 1) return 1e9; let x = 0; for (let i = 0; i < 26; i++) { const e = ENGF[i] * n / 100; x += (cnt[i] - e) * (cnt[i] - e) / (e || 0.01); } return x / n; }
   function charScore(c) {
     const lc = (c >= 65 && c <= 90) ? c + 32 : c; // 대문자→소문자 빈도 매핑
@@ -1550,8 +1557,8 @@
         if (/%[0-9a-fA-F]{2}/.test(s)) { try { const d = decodeURIComponent(s); if (d && d !== s) enq(d, false, st.recipe.concat("URL")); } catch (e) {} }
         // HTML 엔티티 (&…; 있을 때만)
         if (/&(#x?[0-9a-fA-F]+|amp|lt|gt|quot|apos|nbsp);/.test(s)) { const d = htmlEntityDecode(s); if (d && d !== s) enq(d, false, st.recipe.concat("HTML엔티티")); }
-        // Quoted-printable (=XX 두 번 이상)
-        if ((s.match(/=[0-9A-Fa-f]{2}/g) || []).length >= 2) { const u = qpToBytes(s); if (u && u.length) enq(u, true, st.recipe.concat("Quoted-printable")); }
+        // Quoted-printable: 대문자 hex =XX 2회↑ + (소프트개행 있거나 공백 없음) — 'key=ab' 같은 설정값 오탐 방지 (실제 QP는 공백을 =20으로 인코딩)
+        if ((s.match(/=[0-9A-F]{2}/g) || []).length >= 2 && (/=\r?\n/.test(s) || !/ /.test(s))) { const u = qpToBytes(s); if (u && u.length) enq(u, true, st.recipe.concat("Quoted-printable")); }
         // Ascii85 (<~ ~> 또는 base64 아닌 85문자셋)
         if (st.recipe.indexOf("Ascii85") < 0) {
           let a = null;
@@ -1841,11 +1848,13 @@
     return b64u(JSON.stringify(Object.assign({}, d.header, { alg: "none" }))) + "." + b64u(JSON.stringify(d.payload || {})) + ".";
   }
   function addCrackPrompt(box, msg) {
-    box.appendChild(el("div", "magic-sub", msg || "원문은 복원 불가 — .txt 사전을 올리면 자동으로 대입/크랙합니다."));
+    box.appendChild(el("div", "magic-sub", msg || "원문은 복원 불가 — 내장 목록으로 바로 크랙하거나 .txt 사전을 올리세요."));
     const act = el("div", "magic-actions");
-    const b = el("button", "btn primary", wordlistText ? "지금 사전 크랙" : "사전 파일 선택 → 자동 크랙"); b.type = "button";
-    b.onclick = () => { $("dictBox").open = true; if (wordlistText) runDict(false); else $("wordlist").click(); };
-    act.appendChild(b); box.appendChild(act);
+    const b = el("button", "btn primary", "🔓 지금 크랙" + (wordlistText ? " (내 사전)" : " (내장 목록)")); b.type = "button";
+    b.onclick = () => { $("dictBox").open = true; runDict(false); };
+    act.appendChild(b);
+    const bf = el("button", "a-apply", "사전 파일 올리기"); bf.type = "button"; bf.onclick = () => $("wordlist").click();
+    act.appendChild(bf); box.appendChild(act);
   }
   function renderTokenFinal(box, c) {
     const d = c.token.decoded;
@@ -1881,6 +1890,39 @@
     a.href = url; a.download = name; document.body.appendChild(a); a.click();
     setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 0);
   }
+  // 현재까지 도출된 모든 결과를 하나의 텍스트 리포트로 — "전체 복사"용
+  function buildReport() {
+    const ct = $("ct").value.trim(); if (!ct) return "";
+    const L = ["=== Cipher Inspector 결과 ===", "입력(" + ct.length + "자): " + (ct.length > 200 ? ct.slice(0, 200) + " …" : ct), ""];
+    if (lastCands && lastCands[0]) L.push("판정: " + lastCands[0].label + " · 신뢰도 " + pctOf(lastCands[0].score) + "%");
+    if (aesPlain) L.push("키 복호화(" + schemeLabel() + "): " + aesPlain.slice(0, 300));
+    if (commonHit) L.push("흔한 키 '" + commonHit.key + "' (" + commonHit.label + "): " + commonHit.text.slice(0, 300));
+    if (lastSolve && lastSolve.length) { L.push("", "자동 해독 후보 " + lastSolve.length + "개:"); lastSolve.forEach((s, i) => L.push("  " + (i + 1) + ". " + ["입력"].concat(s.recipe, ["결과"]).join(" → ") + "  =  " + (s.text || "").slice(0, 160))); }
+    // 입력 문자열 해시 & 인코딩 (딸깍 참고용)
+    try {
+      const w = enc.Utf8.parse(ct);
+      L.push("", "입력 문자열 해시:", "  MD5    " + CryptoJS.MD5(w), "  SHA1   " + CryptoJS.SHA1(w), "  SHA256 " + CryptoJS.SHA256(w), "  SHA512 " + CryptoJS.SHA512(w).toString().slice(0, 64) + "…");
+      L.push("입력 인코딩:", "  Base64 " + CryptoJS.enc.Base64.stringify(w), "  Hex    " + CryptoJS.enc.Hex.stringify(w).slice(0, 120), "  ROT13  " + rotStr(ct, 13).slice(0, 120));
+    } catch (e) {}
+    return L.join("\n");
+  }
+  async function runAll() {
+    const ct = $("ct").value.trim();
+    if (!ct) { $("ctStatus").className = "pstatus bad"; $("ctStatus").textContent = "먼저 입력을 붙여넣으세요"; return; }
+    trace("전부 시도 → 분석·해독·해시·크랙 일괄 실행", "step");
+    analyzeNow(); if (!$("optDecrypt") || $("optDecrypt").checked) schedule("ct");
+    await new Promise((r) => setTimeout(r, 700)); // 자동 해독/판정 반영 대기
+    const rep = buildReport(), box = $("allReport"); box.className = "magic ok"; box.textContent = "";
+    box.appendChild(el("div", "magic-t", "🚀 전부 시도 — 종합 결과"));
+    const pre = el("div", "magic-out"); pre.textContent = rep; box.appendChild(pre);
+    const act = el("div", "magic-actions");
+    const cp = el("button", "a-apply", "이 결과 전체 복사"); cp.type = "button"; cp.onclick = () => copy(buildReport(), cp);
+    const dl = el("button", "a-apply", "리포트 저장(.txt)"); dl.type = "button"; dl.onclick = () => downloadBytes("cipher-inspector-report.txt", new TextEncoder().encode(buildReport()));
+    act.appendChild(cp); act.appendChild(dl); box.appendChild(act);
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // 크랙 가능하면 한 번에 실행 (내장 목록, 업로드 불필요)
+    if (hashByLen(ct) || isHashInput(ct) || isJwtHS(ct) || /^\*[0-9A-Fa-f]{40}$/.test(ct) || looksCipher(ct)) { $("dictBox").open = true; runDict(false); }
+  }
   function finalActions(box, text, withToPt, bytes) {
     const act = el("div", "magic-actions");
     const cp = el("button", "a-apply", "결과 복사"); cp.type = "button"; cp.onclick = () => copy(text, cp);
@@ -1905,6 +1947,7 @@
     const box = $("magicOut");
     box.className = "magic"; box.textContent = "";
     const ct = $("ct").value.trim();
+    if (!ct) { const ar = $("allReport"); if (ar) ar.classList.add("hidden"); }
     if (!ct || lastSrc === "pt") { box.classList.add("hidden"); return; }
 
     // 1) 키로 복호화된 평문 (최우선)
@@ -1966,8 +2009,8 @@
       const act = el("div", "magic-actions");
       const bk = el("button", "btn ghost", "🔑 키 입력"); bk.type = "button";
       bk.onclick = () => { $("aesBox").open = true; $("aesBox").scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => $("key").focus(), 300); };
-      const bd = el("button", "btn primary", wordlistText ? "사전 크랙 실행" : "사전 파일 선택 → 자동 크랙"); bd.type = "button";
-      bd.onclick = () => { $("dictBox").open = true; if (wordlistText) runDict(false); else $("wordlist").click(); };
+      const bd = el("button", "btn primary", "🔓 지금 크랙" + (wordlistText ? " (내 사전)" : " (내장 목록)")); bd.type = "button";
+      bd.onclick = () => { $("dictBox").open = true; runDict(false); };
       act.appendChild(bk); act.appendChild(bd);
       box.appendChild(act);
       appendCommentary(box, cipherLines(top && top.info, ct, hx));
@@ -1978,6 +2021,12 @@
 
   /* ---------- 사전 공격 (Passphrase 무차별 대입) ---------- */
   let wordlistText = null, dictSeq = 0, dictTimer = null;
+  // 내장 공용 비밀번호 목록 — 파일 없이도 즉시 크랙(딸깍). 파일을 올리면 그걸 사용.
+  const BUILTIN_WORDS = ("123456 password 123456789 12345678 12345 qwerty abc123 111111 1234567 password1 12345678910 000000 iloveyou 1234 1q2w3e4r qwertyuiop 123 monkey dragon 123123 admin welcome login master hello sunshine princess passw0rd football letmein superman 654321 qazwsx trustno1 baseball michael shadow 1234567890 654321 jordan harley hunter buster soccer batman andrew tigger charlie robert thomas hockey ranger daniel starwars klaster george computer michelle jessica pepper zxcvbnm 555555 11111111 131313 freedom 777777 pass maggie 159753 aaaaaa ginger princess joshua cheese amanda summer love ashley nicole chelsea biteme matthew access yankees 987654321 dallas austin thunder taylor matrix mustang secret flag test root toor changeme admin123 root123 pass123 P@ssw0rd Passw0rd Password1 Password123 letmein123 qwerty123 000000 1qaz2wsx zaq12wsx 121212 123qwe 1q2w3e 7777777 666666 112233 789456 987654 abcdef abcd1234 a1b2c3 asdfgh asdf1234 zxcvbn 147258369 CTF flag123 secret123 administrator guest oracle mysql postgres redis nginx apache tomcat jenkins gitlab default backup temp demo sample user1 user123 welcome1 welcome123 spring boot docker kubernetes").split(/\s+/).filter((w, i, a) => w && a.indexOf(w) === i);
+  function effectiveWordlist() {
+    if (wordlistText) return { words: wordlistText.split(/\r?\n/).map((w) => w.replace(/[\r\n]+$/, "")).filter((w) => w.length), builtin: false };
+    return { words: BUILTIN_WORDS.slice(), builtin: true };
+  }
   function dstat(cls, text) { const e = $("dictStatus"); e.className = "pstatus " + cls; e.textContent = text; if (cls === "ok" || cls === "bad") trace("사전/크랙 → " + text, cls === "ok" ? "ok" : "warn", "crack"); }
   function tryPass(ct, word) {
     try {
@@ -2148,9 +2197,9 @@
     if (!window.CryptoJS) return;
     const ct = $("ct").value.trim();
     if (!ct) { if (!auto) dstat("bad", "먼저 위에 암호문을 붙여넣으세요"); return; }
-    if (!wordlistText) { if (!auto) dstat("bad", "먼저 .txt 사전 파일을 선택하세요"); return; }
-    const words = wordlistText.split(/\r?\n/).map((w) => w.replace(/[\r\n]+$/, "")).filter((w) => w.length);
+    const wl = effectiveWordlist(), words = wl.words;
     if (!words.length) { dstat("bad", "사전이 비어 있습니다"); return; }
+    if (wl.builtin) dstat("idle", "내장 공용 비밀번호 목록(" + words.length + "개)으로 시도 중 — .txt를 올리면 교체됩니다");
 
     // bcrypt/argon2 해시 → hash-wasm 크랙
     const ht = isHashInput(ct);
@@ -2915,6 +2964,8 @@
 
     $("exBtn").onclick = () => { $("ct").value = btoa('{"user":"admin","role":"guest","exp":1699999999}'); $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
     $("clrCt").onclick = () => { $("ct").value = ""; $("ct").dispatchEvent(new Event("input", { bubbles: true })); $("ct").focus(); };
+    $("runAll").onclick = runAll;
+    $("copyAllRes").onclick = () => { const r = buildReport(); if (r) copy(r, $("copyAllRes")); };
     $("pasteBtn").onclick = async () => {
       try {
         const txt = await navigator.clipboard.readText();
