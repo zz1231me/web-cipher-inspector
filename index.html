@@ -339,6 +339,11 @@
           <textarea id="pt" placeholder="복호화하면 결과가 여기에 표시됩니다. 직접 수정하면 위 암호문으로 자동 재암호화됩니다."></textarea>
           <div class="pstatus idle" id="ptStatus"></div>
         </div>
+
+        <div class="field" style="margin:16px 0 0;">
+          <button class="btn ghost" id="autoCfg" type="button">🔓 설정 자동 탐색 — 이 키로 최대한 복호화</button>
+          <div class="a-prev hidden" id="autoCfgOut"></div>
+        </div>
       </div>
     </details>
 
@@ -1029,7 +1034,7 @@
     if (seq !== anaSeq) return;
     renderFinal();
     // 암호문/해시 + 사전 로드됨 → 자동으로 대입/크랙까지
-    if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && (looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value))) scheduleDict();
+    if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && (looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value) || isJwtHS($("ct").value))) scheduleDict();
   }
   function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase", rc4: "RC4", des: "DES", "3des": "Triple DES" }; return m[$("scheme").value] || "복호화"; }
   function pretty(o) { try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); } }
@@ -1058,6 +1063,8 @@
     }
     if (d.kind === "jwe") box.appendChild(el("div", "magic-sub", "본문(payload)은 암호화되어 있습니다 — 복호화하려면 키가 필요합니다."));
     finalActions(box, pretty(d.payload || d.header || {}), false);
+    const jalg = d.kind === "jwt" ? isJwtHS($("ct").value) : null;
+    if (jalg) addCrackPrompt(box, "HMAC(" + jalg + ") 서명 — .txt 사전을 올리면 서명 비밀키를 자동으로 크랙합니다(토큰 위조 검증용).");
   }
   function finalActions(box, text, withToPt) {
     const act = el("div", "magic-actions");
@@ -1199,6 +1206,23 @@
     if (found) dstat("ok", "✓ " + type + " 크랙 성공: \"" + found + "\" · " + words.length.toLocaleString() + "개 중 " + secs + "s");
     else dstat("bad", "✕ " + type + " — 사전 " + words.length.toLocaleString() + "개에서 못 찾음 · " + secs + "s");
   }
+  function isJwtHS(s) { const p = (s || "").trim().split("."); if (p.length !== 3 || !p[0]) return null; try { const h = JSON.parse(new TextDecoder().decode(b64ToU8(p[0]))); return /^HS(256|384|512)$/.test(h.alg || "") ? h.alg : null; } catch (e) { return null; } }
+  async function runJwtCrack(jwt, words, alg, my) {
+    $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
+    const parts = jwt.trim().split("."), si = parts[0] + "." + parts[1], sig = parts[2];
+    const hf = alg === "HS384" ? CryptoJS.HmacSHA384 : alg === "HS512" ? CryptoJS.HmacSHA512 : CryptoJS.HmacSHA256;
+    const b64u = (wa) => CryptoJS.enc.Base64.stringify(wa).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const t0 = performance.now(); let found = null;
+    for (let i = 0; i < words.length; i++) {
+      if (my !== dictSeq) { $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; }
+      if (b64u(hf(si, words[i])) === sig) { found = words[i]; break; }
+      if ((i & 1023) === 0) { dstat("idle", "🔓 JWT(" + alg + ") 서명 크랙 " + i.toLocaleString() + " / " + words.length.toLocaleString() + " …"); await new Promise((r) => setTimeout(r, 0)); }
+    }
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
+    $("dictRun").disabled = false; $("dictStop").classList.add("hidden");
+    if (found) dstat("ok", "✓ JWT 서명 비밀키 발견: \"" + found + "\"  (" + alg + " · " + secs + "s) — 이 키로 토큰 위조 가능");
+    else dstat("bad", "✕ JWT 서명 — 사전 " + words.length.toLocaleString() + "개에서 못 찾음 · " + secs + "s");
+  }
   function stopDict() { dictSeq++; $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); dstat("idle", "중지됨"); }
   function scheduleDict() { clearTimeout(dictTimer); dictTimer = setTimeout(() => runDict(true), 400); }
   // 각 단어를 현재 방식(CBC/GCM/CTR/ECB)의 키로 대입해 복호화 시도
@@ -1221,6 +1245,9 @@
     // 원시 MD5/SHA hex 해시 → 각 단어를 해싱해 비교
     const hx = hashByLen(ct);
     if (hx) { return runHexCrack(ct, words, hx, ++dictSeq); }
+    // JWT(HS) → 서명 비밀키 크랙
+    const jalg = isJwtHS(ct);
+    if (jalg) { return runJwtCrack(ct, words, jalg, ++dictSeq); }
 
     const mode = $("dictMode").value, opensslLike = looksOpenSSL(ct);
     const doPass = mode === "pass" || (mode === "auto" && opensslLike);
@@ -1406,6 +1433,65 @@
     }
     if (s === "rc4") return "from Crypto.Cipher import ARC4\npt = ARC4.new(" + keyExpr + ").decrypt(ct)";
     return "# " + schemeLabel() + " 코드 예시는 생략";
+  }
+
+  /* ---------- 설정 자동 탐색: 키로 최대한 복호화 ---------- */
+  async function tryAllConfigs(ctStr, keyStr) {
+    const res = [], seen = new Set();
+    const add = (label, wa) => { if (!wa || wa.sigBytes <= 0) return; let t = ""; try { t = wa.toString(enc.Utf8); } catch (e) {} if (t && printableStr(t) && !seen.has(t)) { seen.add(t); res.push({ label: label, text: t, score: scoreAll(t) }); } };
+    const ns = ctStr.trim().replace(/\s+/g, ""), cts = [];
+    if (/^[A-Za-z0-9+/]+={0,2}$/.test(ns) && ns.length % 4 === 0) { try { cts.push(["Base64", enc.Base64.parse(ns)]); } catch (e) {} }
+    if (looksHex(ns)) { try { cts.push(["Hex", enc.Hex.parse(ns)]); } catch (e) {} }
+    const keys = [];
+    [["Utf8", enc.Utf8], ["Hex", enc.Hex], ["Base64", enc.Base64]].forEach((kf) => { try { const kw = kf[1].parse(keyStr); if (kw.sigBytes > 0) keys.push([kf[0], kw]); } catch (e) {} });
+    // passphrase(OpenSSL) — 포맷 무관
+    try { add("Passphrase (OpenSSL/CryptoJS)", CryptoJS.AES.decrypt(ctStr.trim(), keyStr)); } catch (e) {}
+    const ivZero = enc.Hex.parse("00000000000000000000000000000000");
+    for (const c of cts) {
+      const cn = c[0], ctWA = c[1], all = waToU8(ctWA);
+      const ivPre16 = all.length > 16 ? u8ToWA(all.slice(0, 16)) : null, bodyPre16 = all.length > 16 ? u8ToWA(all.slice(16)) : null;
+      for (const kk of keys) {
+        const kn = kk[0], kw = kk[1];
+        for (const pad of [CryptoJS.pad.Pkcs7, CryptoJS.pad.NoPadding]) {
+          try { add("AES-CBC · key " + kn + " · IV=0 · " + cn, CryptoJS.AES.decrypt({ ciphertext: ctWA }, kw, { mode: CryptoJS.mode.CBC, padding: pad, iv: ivZero })); } catch (e) {}
+          if (ivPre16) { try { add("AES-CBC · key " + kn + " · IV=선두16 · " + cn, CryptoJS.AES.decrypt({ ciphertext: bodyPre16 }, kw, { mode: CryptoJS.mode.CBC, padding: pad, iv: ivPre16 })); } catch (e) {} }
+          try { add("AES-ECB · key " + kn + " · " + cn, CryptoJS.AES.decrypt({ ciphertext: ctWA }, kw, { mode: CryptoJS.mode.ECB, padding: pad })); } catch (e) {}
+        }
+        try { add("AES-CTR · key " + kn + " · IV=0 · " + cn, CryptoJS.AES.decrypt({ ciphertext: ctWA }, kw, { mode: CryptoJS.mode.CTR, padding: CryptoJS.pad.NoPadding, iv: ivZero })); } catch (e) {}
+        try { add("RC4 · key " + kn + " · " + cn, CryptoJS.RC4.decrypt({ ciphertext: ctWA }, kw)); } catch (e) {}
+        try { add("DES-ECB · key " + kn + " · " + cn, CryptoJS.DES.decrypt({ ciphertext: ctWA }, kw, { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 })); } catch (e) {}
+        try { add("3DES-ECB · key " + kn + " · " + cn, CryptoJS.TripleDES.decrypt({ ciphertext: ctWA }, kw, { mode: CryptoJS.mode.ECB, padding: CryptoJS.pad.Pkcs7 })); } catch (e) {}
+        if (all.length > 8) { try { add("DES-CBC · key " + kn + " · IV=선두8 · " + cn, CryptoJS.DES.decrypt({ ciphertext: u8ToWA(all.slice(8)) }, kw, { mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7, iv: u8ToWA(all.slice(0, 8)) })); } catch (e) {} }
+        // AES-GCM (nonce=선두12, tag=끝16)
+        const ku = waToU8(kw);
+        if ([16, 24, 32].indexOf(ku.length) >= 0 && all.length > 28) {
+          try {
+            const k = await crypto.subtle.importKey("raw", ku, { name: "AES-GCM" }, false, ["decrypt"]);
+            const pt = await crypto.subtle.decrypt({ name: "AES-GCM", iv: all.slice(0, 12), tagLength: 128 }, k, all.slice(12));
+            add("AES-GCM · key " + kn + " · nonce=선두12 · " + cn, u8ToWA(new Uint8Array(pt)));
+          } catch (e) {}
+        }
+      }
+    }
+    res.sort((a, b) => b.score - a.score);
+    return res.slice(0, 8);
+  }
+  async function runAutoCfg() {
+    const o = $("autoCfgOut"); o.classList.remove("hidden"); o.textContent = "가능한 설정을 전수 시도 중…";
+    const ct = $("ct").value.trim(), key = $("key").value;
+    if (!ct) { o.textContent = "위에 암호문을 넣으세요."; return; }
+    if (!key) { o.textContent = "키/비밀번호를 입력하세요."; return; }
+    const r = await tryAllConfigs(ct, key);
+    o.textContent = "";
+    if (!r.length) { o.textContent = "어떤 설정으로도 읽을 수 있는 평문이 안 나왔습니다 (키·인코딩·방식 재확인)."; return; }
+    o.appendChild(el("div", "solve-text", "✓ 평문이 나온 설정 " + r.length + "개 (점수순):"));
+    r.forEach((c) => {
+      const row = el("div", "solve-item");
+      row.appendChild(el("div", "a-section-t", c.label));
+      row.appendChild(el("div", "solve-text", c.text.length > 160 ? c.text.slice(0, 160) + " …" : c.text));
+      const b = el("button", "a-apply", "복사"); b.type = "button"; b.onclick = () => copy(c.text, b);
+      row.appendChild(b); o.appendChild(row);
+    });
   }
 
   /* ---------- 복호화 (ct → pt) ---------- */
@@ -1699,6 +1785,7 @@
     $("xorRepeat").onclick = runXorRepeat;
     $("jwtVerify").onclick = verifyJwt;
     $("rsaRun").onclick = rsaDecrypt;
+    $("autoCfg").onclick = runAutoCfg;
     $("shareLink").onclick = () => { const h = shareState(); if (h) { history.replaceState(null, "", location.pathname + h); copy(location.href, $("shareLink")); } };
     $("exportOpenssl").onclick = () => { const o = $("exportOut"); o.classList.remove("hidden"); o.textContent = opensslCode(); };
     $("exportPython").onclick = () => { const o = $("exportOut"); o.classList.remove("hidden"); o.textContent = pythonCode(); };
