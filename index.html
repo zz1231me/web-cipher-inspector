@@ -323,10 +323,15 @@
       <div class="details-body">
         <div class="dict-row">
           <input type="file" id="wordlist" accept=".txt,text/plain" />
+          <select id="dictMode" class="mini" style="width:auto;">
+            <option value="auto">자동</option>
+            <option value="pass">Passphrase</option>
+            <option value="key">AES 키 (현재 방식·IV)</option>
+          </select>
           <button class="btn ghost" id="dictRun" type="button">지금 시도</button>
           <button class="btn ghost hidden" id="dictStop" type="button">중지</button>
         </div>
-        <div class="pstatus idle" id="dictStatus">단어목록(.txt)을 올리면 위 암호문(OpenSSL/CryptoJS passphrase)에 대해 자동으로 시도합니다.</div>
+        <div class="pstatus idle" id="dictStatus">.txt 단어목록을 올리면 자동 시도합니다. <b>Passphrase</b>=OpenSSL/CryptoJS 비밀번호, <b>AES 키</b>=각 단어를 위 ‘방식·IV·키 형식’ 설정의 키로 대입.</div>
       </div>
     </details>
 
@@ -548,9 +553,10 @@
     { re: /^-----BEGIN /, n: "PEM 블록(키/인증서)" },
     { re: /^(ssh-(rsa|ed25519|dss)|ecdsa-sha2-) /, n: "SSH 공개키" },
   ];
-  function pushTok(cands, label, score, icon, subtitle) {
-    cands.push({ label: label, score: score, apply: null, token: { icon: icon, subtitle: subtitle } });
+  function pushTok(cands, label, score, icon, subtitle, decoded) {
+    cands.push({ label: label, score: score, apply: null, token: { icon: icon, subtitle: subtitle, decoded: decoded || null } });
   }
+  function b64uJson(part) { try { return JSON.parse(new TextDecoder("utf-8", { fatal: false }).decode(b64ToU8(part))); } catch (e) { return null; } }
   function tokenPass(s0, noSpace, cands) {
     for (const t of TOKENS) if (t.re.test(s0)) {
       const icon = /해시/.test(t.n) ? "#️⃣" : /(PEM|SSH|인증서)/.test(t.n) ? "📜" : "🔑";
@@ -561,14 +567,16 @@
     }
     const parts = noSpace.split(".");
     if (parts.length === 3 && parts[0] && parts.every((p) => /^[A-Za-z0-9\-_]*$/.test(p))) {
+      const header = b64uJson(parts[0]), payload = b64uJson(parts[1]);
       let sub = "header.payload.signature";
-      try { const h = JSON.parse(new TextDecoder().decode(b64ToU8(parts[0]))); if (h.alg) sub += " · alg=" + h.alg + (h.typ ? " typ=" + h.typ : ""); } catch (e) {}
-      pushTok(cands, "JWT", 0.93, "🎫", sub); return true;
+      if (header && header.alg) sub += " · alg=" + header.alg + (header.typ ? " typ=" + header.typ : "");
+      pushTok(cands, "JWT", 0.93, "🎫", sub, { kind: "jwt", header: header, payload: payload }); return true;
     }
     if (parts.length === 5 && parts.every((p) => /^[A-Za-z0-9\-_]*$/.test(p))) {
+      const header = b64uJson(parts[0]);
       let sub = "header.key.iv.ciphertext.tag (5분할)";
-      try { const h = JSON.parse(new TextDecoder().decode(b64ToU8(parts[0]))); if (h.alg) sub += " · alg=" + h.alg + (h.enc ? " enc=" + h.enc : ""); } catch (e) {}
-      pushTok(cands, "JWE · 암호화된 JWT", 0.9, "🎫", sub); return true;
+      if (header && header.alg) sub += " · alg=" + header.alg + (header.enc ? " enc=" + header.enc : "");
+      pushTok(cands, "JWE · 암호화된 JWT", 0.9, "🎫", sub, { kind: "jwe", header: header }); return true;
     }
     if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(s0)) {
       pushTok(cands, "UUID", 0.9, "🆔", "v" + s0[14] + " 식별자 — 암호문 아님"); return true;
@@ -830,6 +838,21 @@
     renderFinal();
   }
   function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase" }; return m[$("scheme").value] || "복호화"; }
+  function pretty(o) { try { return JSON.stringify(o, null, 2); } catch (e) { return String(o); } }
+  function renderTokenFinal(box, c) {
+    const d = c.token.decoded;
+    box.classList.remove("hidden"); box.classList.add("ok");
+    box.appendChild(el("div", "magic-t", c.token.icon + " " + c.label + " — 디코드된 내용 (서명 검증 안 함)"));
+    if (d.header) { box.appendChild(el("div", "magic-sub", "HEADER")); box.appendChild(el("div", "magic-out", pretty(d.header))); }
+    if (d.payload) {
+      const p = el("div", "magic-sub"); p.textContent = "PAYLOAD"; p.style.marginTop = "12px"; box.appendChild(p);
+      box.appendChild(el("div", "magic-out", pretty(d.payload)));
+      const times = ["iat", "nbf", "exp"].filter((k) => typeof d.payload[k] === "number");
+      if (times.length) box.appendChild(el("div", "magic-sub", times.map((k) => k + " = " + new Date(d.payload[k] * 1000).toISOString().replace("T", " ").slice(0, 19) + "Z").join("   ·   ")));
+    }
+    if (d.kind === "jwe") box.appendChild(el("div", "magic-sub", "본문(payload)은 암호화되어 있습니다 — 복호화하려면 키가 필요합니다."));
+    finalActions(box, pretty(d.payload || d.header || {}), false);
+  }
   function finalActions(box, text, withToPt) {
     const act = el("div", "magic-actions");
     const cp = el("button", "a-apply", "결과 복사"); cp.type = "button"; cp.onclick = () => copy(text, cp);
@@ -856,6 +879,9 @@
       finalActions(box, aesPlain, false);
       return;
     }
+    // 1.5) 토큰(JWT/JWE 등) — 디코드된 내용 표시
+    const topTok = lastCands && lastCands[0];
+    if (topTok && topTok.token && topTok.token.decoded) { renderTokenFinal(box, topTok); return; }
     // 2) 인코딩/압축 자동 디코드 결과 (Magic)
     if (lastMagic && lastMagic.isText && lastMagic.chain.length && lastMagic.value.trim()) {
       box.appendChild(el("div", "magic-t", "🪄 자동 디코드 결과 (Magic)"));
@@ -901,33 +927,55 @@
     if (/^U2FsdGVk/.test(s)) return true;
     try { const u = b64ToU8(s.replace(/\s+/g, "")); return !!(u && u.length >= 16 && [0x53,0x61,0x6c,0x74,0x65,0x64,0x5f,0x5f].every((b, i) => u[i] === b)); } catch (e) { return false; }
   }
-  function stopDict() { dictSeq++; $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); }
+  function stopDict() { dictSeq++; $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); dstat("idle", "중지됨"); }
   function scheduleDict() { clearTimeout(dictTimer); dictTimer = setTimeout(() => runDict(true), 400); }
+  // 각 단어를 현재 방식(CBC/GCM/CTR/ECB)의 키로 대입해 복호화 시도
+  async function tryKey(ct, word) {
+    $("key").value = word;
+    try { const r = await decrypt($("scheme").value, ct); if (r && r.text && printableStr(r.text)) return r.text; } catch (e) {}
+    return null;
+  }
   async function runDict(auto) {
     if (!window.CryptoJS) return;
     const ct = $("ct").value.trim();
     if (!ct) { if (!auto) dstat("bad", "먼저 위에 암호문을 붙여넣으세요"); return; }
     if (!wordlistText) { if (!auto) dstat("bad", "먼저 .txt 사전 파일을 선택하세요"); return; }
-    const words = wordlistText.split(/\r?\n/).map((w) => w.replace(/\s+$/, "")).filter((w) => w.length);
+    const words = wordlistText.split(/\r?\n/).map((w) => w.replace(/[\r\n]+$/, "")).filter((w) => w.length);
     if (!words.length) { dstat("bad", "사전이 비어 있습니다"); return; }
-    const my = ++dictSeq;
+
+    const mode = $("dictMode").value, opensslLike = looksOpenSSL(ct);
+    const doPass = mode === "pass" || (mode === "auto" && opensslLike);
+    const doKey = mode === "key" || (mode === "auto" && !opensslLike);
+    const origKey = $("key").value, origScheme = $("scheme").value;
+    const total = words.length, my = ++dictSeq, t0 = performance.now();
     $("dictRun").disabled = true; $("dictStop").classList.remove("hidden");
     let found = null;
-    for (let i = 0; i < words.length; i++) {
-      if (my !== dictSeq) return; // 취소/재시작됨
-      const t = tryPass(ct, words[i]);
-      if (t) { found = { w: words[i], t: t }; break; }
-      if ((i & 255) === 0) { dstat("idle", "🔍 " + i.toLocaleString() + " / " + words.length.toLocaleString() + " 시도 중…"); await new Promise((r) => setTimeout(r, 0)); }
+    for (let i = 0; i < total; i++) {
+      if (my !== dictSeq) { $("key").value = origKey; $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; }
+      const w = words[i];
+      let t = null, via = "";
+      if (doPass) { t = tryPass(ct, w); if (t) via = "passphrase"; }
+      if (!t && doKey) { t = await tryKey(ct, w); if (t) via = "key"; }
+      if (t) { found = { w: w, t: t, via: via }; break; }
+      if ((i & 255) === 0) {
+        const rate = Math.round(i / (((performance.now() - t0) / 1000) || 1));
+        dstat("idle", "🔍 " + i.toLocaleString() + " / " + total.toLocaleString() + " · " + rate.toLocaleString() + "/s");
+        await new Promise((r) => setTimeout(r, 0));
+        if (my !== dictSeq) { $("key").value = origKey; $("dictRun").disabled = false; $("dictStop").classList.add("hidden"); return; }
+      }
     }
-    if (my !== dictSeq) return;
+    const secs = ((performance.now() - t0) / 1000).toFixed(1);
     $("dictRun").disabled = false; $("dictStop").classList.add("hidden");
     if (found) {
-      $("scheme").value = "pass"; syncFields(); $("aesBox").open = true;
+      if (found.via === "passphrase") { $("scheme").value = "pass"; syncFields(); }
+      else { $("scheme").value = origScheme; }
+      $("aesBox").open = true;
       $("key").value = found.w;
       lastSrc = "ct"; save(); convert("ct");
-      dstat("ok", "✓ 비밀번호 발견: \"" + found.w + "\" — 아래 ‘키로 직접 복호화’에 결과 표시됨");
+      dstat("ok", "✓ 발견: \"" + found.w + "\"  (" + found.via + " · " + total.toLocaleString() + "개 중 " + secs + "s) — 위 결과에 평문 표시됨");
     } else {
-      dstat("bad", "✕ 사전 " + words.length.toLocaleString() + "개에서 찾지 못함 (OpenSSL/CryptoJS passphrase 기준)");
+      $("key").value = origKey; $("scheme").value = origScheme;
+      dstat("bad", "✕ " + total.toLocaleString() + "개에서 못 찾음 · " + secs + "s (모드: " + mode + (doKey && !doPass ? " · IV/방식 설정 확인" : "") + ")");
     }
   }
 
@@ -1177,8 +1225,10 @@
         wordlistText = await f.text();
         const n = wordlistText.split(/\r?\n/).filter((w) => w.trim()).length;
         $("dictBox").open = true;
-        if ($("ct").value.trim()) { dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 — 자동 시도 중…"); runDict(true); }
-        else dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 로드됨 — 위에 암호문을 넣으면 자동 시도합니다");
+        const ctv = $("ct").value.trim();
+        if (ctv && (looksOpenSSL(ctv) || $("dictMode").value !== "auto")) { dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 — 자동 시도 중…"); runDict(true); }
+        else if (ctv) dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 로드됨 — [지금 시도]를 누르면 현재 방식으로 대입합니다");
+        else dstat("idle", f.name + " · " + n.toLocaleString() + " 단어 로드됨 — 위에 암호문을 넣으세요");
       } catch (err) { dstat("bad", "파일을 읽지 못했습니다"); }
     };
     $("dictRun").onclick = () => runDict(false);
