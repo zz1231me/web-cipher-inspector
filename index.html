@@ -1153,6 +1153,13 @@
         pushTok(cands, "JWE · 암호화된 JWT", 0.9, "🎫", sub, { kind: "jwe", header: header }); return true;
       }
     }
+    // 서명 세션 쿠키 (Flask/itsdangerous 계열): payload.timestamp.signature — 첫 조각이 JSON이면 (진짜 JWT는 위에서 이미 처리)
+    if (parts.length === 3 && parts.every((p) => /^\.?[A-Za-z0-9\-_]*$/.test(p)) && parts[0].replace(/^\./, "").length >= 4) {
+      const sess = b64uJson(parts[0].replace(/^\./, ""));
+      if (sess && typeof sess === "object" && !Array.isArray(sess)) {
+        pushTok(cands, "서명 세션 쿠키 (Flask/itsdangerous)", 0.82, "🍪", "payload.timestamp.signature · HMAC 서명(암호화 아님) — 내용은 그대로 노출, SECRET_KEY를 알면 위조 가능", { kind: "session", payload: sess }); return true;
+      }
+    }
     if (/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/.test(s0)) {
       const ver = s0[14]; let sub = "v" + ver + " 식별자 — 암호문 아님";
       if (ver === "1" || ver === "6") {
@@ -1660,11 +1667,11 @@
     if (seq !== anaSeq) return;
     if ($("ct").value.trim()) { if (lastSolve && lastSolve.length) trace("자동 해독 성공 → " + ["입력"].concat(lastSolve[0].recipe, ["결과"]).join(" → "), "ok", "decode"); else if (doDecode) trace("자동 해독 → 읽을 수 있는 결과 없음", "info", "decode"); }
     renderFinal();
-    // 암호문/해시 + 사전 로드됨 → 자동 브루트포스가 켜져 있으면 자동, 아니면 물어봄
+    // 암호문/해시/JWT 감지 → 자동 브루트포스가 켜져 있으면 0클릭 크랙(내장 목록 또는 올린 사전), 아니면 안내
     const target = looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value) || isJwtHS($("ct").value) || /^\*[0-9A-Fa-f]{40}$/.test($("ct").value.trim());
-    if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && target) {
-      if ($("optBrute") && $("optBrute").checked) { trace("자동 브루트포스 ON → 사전 대입/크랙 시작", "step", "crack"); scheduleDict(); }
-      else trace("대상 감지 · 사전 로드됨 → 결과창 버튼 또는 ‘자동 브루트포스’ 체크로 시작", "warn", "crack");
+    if ((!lastSolve || !lastSolve.length) && (!$("optDict") || $("optDict").checked) && target) {
+      if ($("optBrute") && $("optBrute").checked) { trace("자동 브루트포스 ON → " + (wordlistText ? "올린 사전" : "내장 목록") + "으로 크랙 시작", "step", "crack"); scheduleDict(); }
+      else trace("대상 감지 → 결과창 ‘지금 크랙’ 버튼 또는 ‘자동 브루트포스’ 체크(0클릭)로 시작", "warn", "crack");
     }
     // 키 미입력 + 암호문 추정 + 흔한 키 자동 ON → 상수 키 자동 대입
     commonSeq++; commonHit = null;
@@ -1877,10 +1884,11 @@
     finalActions(box, pretty(d.payload || d.header || {}), false);
     if (d.kind === "jwt") {
       const act = el("div", "magic-actions");
-      const bf = el("button", "a-apply", "alg=none 위조본 복사"); bf.type = "button"; bf.onclick = () => copy(jwtForgeNone(d), bf);
-      act.appendChild(bf); box.appendChild(act);
+      const b1 = el("button", "a-apply", "alg=none 위조 → 입력"); b1.type = "button"; b1.onclick = () => jwtNoneForge();
+      const b2 = el("button", "a-apply", "alg=none 위조본 복사"); b2.type = "button"; b2.onclick = () => copy(jwtForgeNone(d), b2);
+      act.appendChild(b1); act.appendChild(b2); box.appendChild(act);
       const jalg = isJwtHS($("ct").value);
-      if (jalg) addCrackPrompt(box, "HMAC(" + jalg + ") 서명 — .txt 사전을 올리면 서명 비밀키를 자동으로 크랙합니다(토큰 위조 검증용).");
+      if (jalg) addCrackPrompt(box, "HMAC(" + jalg + ") 서명 — 내장 목록으로 바로 크랙하거나 .txt를 올리세요 (서명 비밀키 발견 시 토큰 위조 가능).");
     }
     appendCommentary(box, tokenLines(c));
   }
