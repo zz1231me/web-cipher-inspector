@@ -129,6 +129,10 @@
   .magic-recipe { display:flex; align-items:center; gap:7px; flex-wrap:wrap; margin-bottom:12px; }
   .magic-out { padding:12px 14px; background:var(--card); border:1px solid var(--line-2); border-radius:11px; font-family:var(--mono); font-size:12.5px; color:var(--ink); white-space:pre-wrap; word-break:break-all; max-height:220px; overflow:auto; line-height:1.55; }
   .magic-actions { margin-top:11px; display:flex; gap:8px; flex-wrap:wrap; }
+  .magic.ok { background:linear-gradient(180deg,#eafaf1,#f4f8f5); border-color:rgba(36,138,61,.24); }
+  .magic.ok .magic-t { color:var(--ok); }
+  .magic.hint { background:var(--fill); border-color:var(--line); }
+  .magic-sub { font-size:12.5px; color:var(--ink2); margin:-4px 0 12px; line-height:1.5; }
 
   /* Analysis — visual */
   .analysis { margin-top:20px; padding:20px; background:var(--fill); border-radius:16px; }
@@ -744,12 +748,13 @@
     lastSrc = "ct";
     analyzeNow(); save(); convert("ct");
   }
-  let anaSeq = 0;
+  let anaSeq = 0, lastCands = null, lastMagic = null, aesPlain = null;
   async function analyzeNow() {
     const seq = ++anaSeq;
     const cands = analyze($("ct").value);
     renderAnalysis(cands);
-    renderMagic(seq);
+    lastCands = cands;
+    updateFinal(seq);
     // 자동 레이어 관통: 최상위 후보가 gzip/zlib면 압축 해제해 내부까지 표시
     const top = cands && cands[0];
     if (!top || !top.bytes || typeof DecompressionStream === "undefined") return;
@@ -819,23 +824,63 @@
     }
     return { chain, value: cur, isText: typeof cur === "string" };
   }
-  async function renderMagic(seq) {
-    const box = $("magicOut");
-    const r = await bake($("ct").value);
+  async function updateFinal(seq) {
+    lastMagic = await bake($("ct").value);
     if (seq !== anaSeq) return;
-    // 실제로 1회 이상 디코드해서 텍스트가 나온 경우에만 표시
-    if (!r.chain.length || !r.isText || !r.value.trim()) { box.classList.add("hidden"); box.textContent = ""; return; }
-    box.classList.remove("hidden"); box.textContent = "";
-    box.appendChild(el("div", "magic-t", "🪄 자동 디코드 (Magic) — 가장 그럴듯한 레시피"));
-    const rec = el("div", "magic-recipe");
-    ["입력"].concat(r.chain, ["결과"]).forEach((s, i) => { if (i) rec.appendChild(el("span", "a-arrow", "→")); rec.appendChild(el("span", "a-step", s)); });
-    box.appendChild(rec);
-    box.appendChild(el("div", "magic-out", r.value.length > 4000 ? r.value.slice(0, 4000) + " …" : r.value));
+    renderFinal();
+  }
+  function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase" }; return m[$("scheme").value] || "복호화"; }
+  function finalActions(box, text, withToPt) {
     const act = el("div", "magic-actions");
-    const cp = el("button", "a-apply", "결과 복사"); cp.type = "button"; cp.onclick = () => copy(r.value, cp);
-    const toPt = el("button", "a-apply", "평문칸에 넣기"); toPt.type = "button";
-    toPt.onclick = () => { setVal($("pt"), r.value); status("pt", "ok", "← 자동 디코드 결과 (" + r.value.length.toLocaleString() + "자)"); };
-    act.appendChild(cp); act.appendChild(toPt); box.appendChild(act);
+    const cp = el("button", "a-apply", "결과 복사"); cp.type = "button"; cp.onclick = () => copy(text, cp);
+    act.appendChild(cp);
+    if (withToPt) {
+      const toPt = el("button", "a-apply", "평문칸에 넣기 (재암호화)"); toPt.type = "button";
+      toPt.onclick = () => { $("aesBox").open = true; setVal($("pt"), text); status("pt", "ok", "← 결과 (" + text.length.toLocaleString() + "자)"); };
+      act.appendChild(toPt);
+    }
+    box.appendChild(act);
+  }
+  // 분석 → 평문까지 하나의 흐름: 가능한 최종 결과를 상단에 크게 표시
+  function renderFinal() {
+    const box = $("magicOut");
+    box.className = "magic"; box.textContent = "";
+    const ct = $("ct").value.trim();
+    if (!ct || lastSrc === "pt") { box.classList.add("hidden"); return; }
+
+    // 1) 키로 복호화된 평문 (최우선)
+    if (aesPlain != null && aesPlain !== "") {
+      box.classList.add("ok");
+      box.appendChild(el("div", "magic-t", "🔓 복호화된 평문 · " + schemeLabel()));
+      box.appendChild(el("div", "magic-out", aesPlain.length > 4000 ? aesPlain.slice(0, 4000) + " …" : aesPlain));
+      finalActions(box, aesPlain, false);
+      return;
+    }
+    // 2) 인코딩/압축 자동 디코드 결과 (Magic)
+    if (lastMagic && lastMagic.isText && lastMagic.chain.length && lastMagic.value.trim()) {
+      box.appendChild(el("div", "magic-t", "🪄 자동 디코드 결과 (Magic)"));
+      const rec = el("div", "magic-recipe");
+      ["입력"].concat(lastMagic.chain, ["결과"]).forEach((s, i) => { if (i) rec.appendChild(el("span", "a-arrow", "→")); rec.appendChild(el("span", "a-step", s)); });
+      box.appendChild(rec);
+      box.appendChild(el("div", "magic-out", lastMagic.value.length > 4000 ? lastMagic.value.slice(0, 4000) + " …" : lastMagic.value));
+      finalActions(box, lastMagic.value, true);
+      return;
+    }
+    // 3) 암호문인데 키가 없음 → 평문까지 가도록 키 입력 유도
+    const top = lastCands && lastCands[0];
+    const isCipher = top && top.info && (/암호문|바이너리/.test(top.info.catLabel) || top.info.align);
+    if (isCipher && !$("key").value.trim()) {
+      box.classList.add("hint");
+      box.appendChild(el("div", "magic-t", "🔒 암호문으로 보입니다 — 평문을 보려면 키가 필요합니다"));
+      box.appendChild(el("div", "magic-sub", "방식·키·IV를 입력하면 복호화된 평문이 여기 바로 표시됩니다. 비밀번호를 모르면 아래 ‘사전 공격’을 쓰세요."));
+      const act = el("div", "magic-actions");
+      const b = el("button", "btn primary", "🔑 키 입력하고 복호화"); b.type = "button";
+      b.onclick = () => { $("aesBox").open = true; $("aesBox").scrollIntoView({ behavior: "smooth", block: "center" }); setTimeout(() => $("key").focus(), 300); };
+      act.appendChild(b);
+      box.appendChild(act);
+      return;
+    }
+    box.classList.add("hidden");
   }
 
   /* ---------- 사전 공격 (Passphrase 무차별 대입) ---------- */
@@ -992,6 +1037,7 @@
     if (!window.CryptoJS) return;
     const scheme = $("scheme").value;
     if (src === "pt") {
+      aesPlain = null; renderFinal();
       const input = $("pt").value;
       if (!input) { setVal($("ct"), ""); status("ct", "idle", ""); status("pt", "idle", ""); return; }
       if (!$("key").value.trim()) { status("pt", "idle", "🔑 키를 입력하면 자동 암호화됩니다"); return; }
@@ -1006,16 +1052,18 @@
       }
     } else {
       const input = $("ct").value.trim();
-      if (!input) { setVal($("pt"), ""); status("pt", "idle", ""); status("ct", "idle", ""); return; }
-      if (!$("key").value.trim()) { setVal($("pt"), ""); status("ct", "idle", ""); status("pt", "idle", "🔑 키를 입력하면 여기서 복호화됩니다 (형식 분석은 아래 자동)"); return; }
+      if (!input) { setVal($("pt"), ""); status("pt", "idle", ""); status("ct", "idle", ""); aesPlain = null; renderFinal(); return; }
+      if (!$("key").value.trim()) { setVal($("pt"), ""); status("ct", "idle", ""); status("pt", "idle", "🔑 키를 입력하면 여기서 복호화됩니다 (형식 분석은 위 자동)"); aesPlain = null; renderFinal(); return; }
       try {
         const r = await decrypt(scheme, input);
         setVal($("pt"), r.text);
         flash($("pt"));
         status("pt", "ok", "✓ 복호화" + (r.note ? " · " + r.note : "") + " · " + r.text.length.toLocaleString() + "자");
         status("ct", "idle", "");
+        aesPlain = r.text; renderFinal();
       } catch (e) {
         status("pt", "bad", errMsg(scheme, e));
+        aesPlain = null; renderFinal();
       }
     }
     save();
@@ -1151,6 +1199,7 @@
       $("ivPrepend").checked = false;
       status("pt", "idle", ""); status("ct", "idle", "");
       renderAnalysis(null);
+      aesPlain = null; lastMagic = null; lastCands = null;
       $("magicOut").classList.add("hidden"); $("magicOut").textContent = "";
       wordlistText = null; try { $("wordlist").value = ""; } catch (e) {}
       dstat("idle", "단어목록(.txt)을 올리면 위 암호문(OpenSSL/CryptoJS passphrase)에 대해 자동으로 시도합니다.");
