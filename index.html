@@ -9,14 +9,14 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
   :root {
-    --bg:#e9ebee; --card:#ffffff; --fill:#f2f3f5; --fill-2:#f7f8fa;
-    --ink:#12151a; --ink2:#4a505b; --ink3:#828994;
-    --line:#d3d7dd; --line-2:#e3e6ea;
-    --accent:#2b4a7e; --accent-press:#213a66; --accent-soft:rgba(43,74,126,.09);
-    --ok:#1c7146; --warn:#a53b28;
-    --radius:7px; --radius-sm:5px;
-    --mono:"JetBrains Mono",ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
-    --sans:"Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+    --bg:#d5d5cf; --card:#f4f4ef; --fill:#e6e6df; --fill-2:#efefe9;
+    --ink:#161613; --ink2:#3a3a34; --ink3:#6a6a62;
+    --line:#9a9a90; --line-2:#c0c0b6;
+    --accent:#00457a; --accent-press:#002f54; --accent-soft:#d3e0ec;
+    --ok:#0a6b34; --warn:#93261a;
+    --radius:2px; --radius-sm:2px;
+    --mono:"JetBrains Mono","Consolas","Courier New",monospace;
+    --sans:Tahoma,Verdana,Geneva,"Malgun Gothic","맑은 고딕",sans-serif;
   }
   * { box-sizing:border-box; }
   html,body { margin:0; height:100%; }
@@ -26,12 +26,11 @@
   }
   /* 앱셸: 헤더 / 보드(3열) / 콘솔 — 한 화면 고정 */
   .app { height:100vh; display:grid; grid-template-rows:auto 1fr auto; }
-  .topbar { display:flex; align-items:center; gap:11px; padding:8px 14px; background:var(--card); border-bottom:1px solid var(--line); }
+  .topbar { display:flex; align-items:center; gap:10px; padding:6px 12px; background:#c7c7bd; border-bottom:1px solid #7d7d72; }
   .topbar .htext { display:flex; flex-direction:column; }
-  .topbar h1 { font-family:var(--mono); font-size:14px; font-weight:600; letter-spacing:-.01em; margin:0; }
-  .topbar p { font-size:11px; color:var(--ink3); margin:1px 0 0; }
+  .topbar h1 { font-family:var(--mono); font-size:13px; font-weight:700; letter-spacing:.08em; margin:0; color:var(--ink); }
   .topbar .chip { margin-left:auto; }
-  .mark { width:28px; height:28px; flex:none; border:1.5px solid var(--ink); border-radius:6px; position:relative; }
+  .mark { width:24px; height:24px; flex:none; border:1.5px solid var(--ink); border-radius:0; position:relative; }
   .mark::after { content:""; position:absolute; left:50%; top:7px; transform:translateX(-50%); width:9px; height:8px; border:1.5px solid var(--ink); border-bottom:none; border-radius:5px 5px 0 0; }
   .mark::before { content:""; position:absolute; left:50%; top:13px; transform:translateX(-50%); width:15px; height:11px; border-radius:2px; background:var(--ink); }
 
@@ -47,7 +46,7 @@
   .tabbtn.active { color:var(--accent); border-bottom-color:var(--accent); }
 
   /* Card */
-  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; box-shadow:0 1px 2px rgba(20,25,35,.04); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px 16px; }
 
   @media (max-width:1000px){
     body { height:auto; overflow:auto; }
@@ -99,7 +98,7 @@
   input[type=text], textarea { font-family:var(--mono); font-size:13px; }
   select { font-family:var(--sans); font-size:13px; }
   textarea { min-height:150px; resize:vertical; white-space:pre-wrap; word-break:break-all; background:var(--fill-2); line-height:1.5; }
-  input:focus, select:focus, textarea:focus { outline:none; background:#fff; border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-soft); }
+  input:focus, select:focus, textarea:focus { outline:none; background:#fff; border-color:var(--accent); box-shadow:0 0 0 2px var(--accent-soft); }
   input:disabled { opacity:.45; cursor:not-allowed; }
   ::placeholder { color:var(--ink3); }
   select { cursor:pointer; appearance:none; padding-right:34px;
@@ -120,16 +119,16 @@
   .toolbar { display:flex; align-items:center; gap:14px; margin-bottom:20px; flex-wrap:wrap; }
   .toolbar-actions { margin-left:auto; display:flex; gap:8px; }
   .switch { display:inline-flex; align-items:center; gap:10px; font-size:14px; color:var(--ink); cursor:pointer; user-select:none; }
-  .switch input { appearance:none; width:44px; height:26px; border-radius:26px; background:#e3e3e8; position:relative; cursor:pointer; transition:background .2s; margin:0; flex:none; }
-  .switch input:checked { background:var(--accent); }
-  .switch input::after { content:""; position:absolute; top:2px; left:2px; width:22px; height:22px; border-radius:50%; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.25); transition:transform .2s; }
-  .switch input:checked::after { transform:translateX(18px); }
-  .btn { font-family:var(--sans); font-size:14px; font-weight:590; border:1px solid transparent; border-radius:var(--radius-sm); padding:9px 18px; cursor:pointer; transition:background .15s, transform .1s; }
-  .btn:active { transform:scale(.975); }
-  .btn.primary { background:var(--accent); color:#fff; }
+  .switch input { appearance:none; width:38px; height:20px; border-radius:0; background:#cfcfc6; border:1px solid var(--line); position:relative; cursor:pointer; margin:0; flex:none; }
+  .switch input:checked { background:var(--accent-soft); border-color:var(--accent); }
+  .switch input::after { content:"OFF"; position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:9px; font-weight:700; color:var(--ink3); letter-spacing:.02em; }
+  .switch input:checked::after { content:"ON"; color:var(--accent); }
+  .btn { font-family:var(--sans); font-size:13.5px; font-weight:700; border:1px solid var(--line); border-radius:var(--radius-sm); padding:8px 18px; cursor:pointer; transition:background .1s; }
+  .btn:active { background:var(--accent-soft); }
+  .btn.primary { background:var(--accent); border-color:var(--accent-press); color:#fff; }
   .btn.primary:hover { background:var(--accent-press); }
   .btn.ghost { background:var(--fill); color:var(--ink); }
-  .btn.ghost:hover { background:#e7e7ec; }
+  .btn.ghost:hover { background:#deded4; }
 
   /* Converter */
   .convert { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
@@ -176,16 +175,19 @@
   .hash-v { flex:1; min-width:0; color:var(--ink); word-break:break-all; }
   .hash-row .a-apply { flex:none; }
   input[type=range] { width:100%; accent-color:var(--accent); margin:4px 0 0; }
-  .devconsole { background:#0d1117; border-top:1px solid #30363d; }
-  .dc-head { display:flex; align-items:center; gap:8px; padding:7px 14px; background:#161b22; border-bottom:1px solid #21262d; }
-  .dc-title { font-family:var(--mono); font-size:10.5px; font-weight:600; color:#8b949e; letter-spacing:.06em; text-transform:uppercase; margin-right:auto; }
-  .dc-btn { font-family:var(--mono); font-size:11px; color:#8b949e; background:#21262d; border:1px solid #30363d; border-radius:4px; padding:3px 9px; cursor:pointer; }
-  .dc-btn:hover { color:#c9d1d9; }
-  .devconsole.collapsed .tracelog { display:none; }
+  .devconsole { background:#0a0a0a; border-top:2px solid #000; }
+  .dc-head { display:flex; align-items:center; gap:8px; padding:5px 12px; background:#1a1a1a; border-bottom:1px solid #000; }
+  .dc-title { font-family:var(--mono); font-size:10.5px; font-weight:700; color:#9a9a8e; letter-spacing:.08em; text-transform:uppercase; margin-right:auto; }
+  .dc-btn { font-family:var(--mono); font-size:11px; color:#b0b0a4; background:#2a2a2a; border:1px solid #000; border-radius:0; padding:2px 9px; cursor:pointer; }
+  .dc-btn:hover { color:#fff; background:#3a3a3a; }
+  .dc-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:1px; background:#000; }
+  .dc-pane { display:flex; flex-direction:column; background:#0a0a0a; min-width:0; }
+  .dc-pane-h { font-family:var(--mono); font-size:10px; letter-spacing:.05em; color:#7d7d72; background:#141410; padding:3px 10px; border-bottom:1px solid #000; }
+  .devconsole.collapsed .dc-grid { display:none; }
   .devconsole.collapsed .dc-head { border-bottom:none; }
-  .tracelog { font-family:var(--mono); font-size:11.5px; line-height:1.6; background:#0d1117; color:#c9d1d9; padding:9px 14px; height:150px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
-  @media (max-width:1000px){ .devconsole { position:fixed; left:0; right:0; bottom:0; z-index:60; } .tracelog { height:20vh; } }
-  .tracelog:empty::before { content:"입력을 넣으면 자동 분석·복호화 과정이 여기 기록됩니다."; color:#6e7681; }
+  .tracelog { font-family:var(--mono); font-size:11px; line-height:1.55; background:#0a0a0a; color:#c2c2b6; padding:7px 11px; height:128px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+  @media (max-width:1000px){ .devconsole { position:fixed; left:0; right:0; bottom:0; z-index:60; } .dc-grid { grid-template-columns:1fr; max-height:34vh; overflow:auto; } .tracelog { height:auto; min-height:56px; max-height:16vh; } }
+  .tracelog:empty::before { content:"대기 중…"; color:#5a5a52; }
   .tracelog .tl { display:block; }
   .tracelog .tt { color:#6e7681; }
   .tracelog .tl.ok .tm { color:#3fb950; }
@@ -210,7 +212,7 @@
   .a-section { margin-top:18px; }
   .a-section-t { font-size:11px; font-weight:600; color:var(--ink3); letter-spacing:.03em; text-transform:uppercase; margin-bottom:9px; }
   .a-pipe { display:flex; align-items:center; gap:7px; flex-wrap:wrap; }
-  .a-step { font-family:var(--mono); font-size:12px; font-weight:600; color:var(--ink); background:var(--card); border:1px solid var(--line-2); border-radius:9px; padding:6px 12px; }
+  .a-step { font-family:var(--mono); font-size:12px; font-weight:600; color:var(--ink); background:var(--card); border:1px solid var(--line-2); border-radius:2px; padding:6px 12px; }
   .a-step:last-child { color:#fff; background:var(--accent); border-color:transparent; }
   .a-arrow { color:var(--ink3); font-size:12px; }
 
@@ -251,8 +253,7 @@
     <header class="topbar">
       <div class="mark" aria-hidden="true"></div>
       <div class="htext">
-        <h1>Cipher Inspector</h1>
-        <p>암호문 분석 · 자동 디코드 · 복호화 — 브라우저 내부 처리, 외부 전송 없음</p>
+        <h1>CIPHER INSPECTOR</h1>
       </div>
       <button class="chip" id="clearAll" type="button">전체 지우기</button>
     </header>
@@ -535,11 +536,24 @@
 
     <div id="console" class="devconsole">
     <div class="dc-head">
-      <span class="dc-title">실행 로그 · CONSOLE</span>
+      <span class="dc-title">CONSOLE — 병렬 실행 로그</span>
       <button class="dc-btn" id="dcClear" type="button">지우기</button>
       <button class="dc-btn" id="dcToggle" type="button">▾ 접기</button>
     </div>
-    <div id="traceLog" class="tracelog"></div>
+    <div class="dc-grid">
+      <div class="dc-pane">
+        <div class="dc-pane-h">▸ 분석 · 판정</div>
+        <div id="log_analyze" class="tracelog"></div>
+      </div>
+      <div class="dc-pane">
+        <div class="dc-pane-h">▸ 디코드 · 자동해독</div>
+        <div id="log_decode" class="tracelog"></div>
+      </div>
+      <div class="dc-pane">
+        <div class="dc-pane-h">▸ 복호화 · 크랙</div>
+        <div id="log_crack" class="tracelog"></div>
+      </div>
+    </div>
     </div>
   </div>
 
@@ -911,15 +925,20 @@
   }
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
   let traceT0 = 0;
-  function traceClear() { traceT0 = performance.now(); const l = $("traceLog"); if (l) l.textContent = ""; }
-  function trace(msg, level) {
-    const box = $("traceLog"); if (!box) return;
+  const TRACE_CHANNELS = ["analyze", "decode", "crack"];
+  function traceClear() {
+    traceT0 = performance.now();
+    TRACE_CHANNELS.forEach(function (c) { const l = $("log_" + c); if (l) l.textContent = ""; });
+  }
+  function trace(msg, level, channel) {
+    const ch = TRACE_CHANNELS.indexOf(channel) >= 0 ? channel : "analyze";
+    const box = $("log_" + ch); if (!box) return;
     const t = ((performance.now() - traceT0) / 1000).toFixed(2);
     const line = el("div", "tl " + (level || "info"));
     line.appendChild(el("span", "tt", "[" + ("     " + t).slice(-6) + "s] "));
     line.appendChild(el("span", "tm", msg));
     box.appendChild(line); box.scrollTop = box.scrollHeight;
-    while (box.childNodes.length > 250) box.removeChild(box.firstChild);
+    while (box.childNodes.length > 200) box.removeChild(box.firstChild);
   }
   function pctOf(score) { return Math.max(2, Math.min(99, Math.round(score * 100))); }
   function confColor(pct) { return pct >= 75 ? "#1c7146" : pct >= 55 ? "#2b4a7e" : "#828994"; }
@@ -1236,13 +1255,13 @@
     const doDecode = !$("optDecode") || $("optDecode").checked;
     lastSolve = doDecode ? await autoSolve($("ct").value, { xor: !$("optXor") || $("optXor").checked }) : [];
     if (seq !== anaSeq) return;
-    if ($("ct").value.trim()) { if (lastSolve && lastSolve.length) trace("자동 해독 성공 → " + ["입력"].concat(lastSolve[0].recipe, ["결과"]).join(" → "), "ok"); else if (doDecode) trace("자동 해독 → 읽을 수 있는 결과 없음"); }
+    if ($("ct").value.trim()) { if (lastSolve && lastSolve.length) trace("자동 해독 성공 → " + ["입력"].concat(lastSolve[0].recipe, ["결과"]).join(" → "), "ok", "decode"); else if (doDecode) trace("자동 해독 → 읽을 수 있는 결과 없음", "info", "decode"); }
     renderFinal();
     // 암호문/해시 + 사전 로드됨 → 자동 브루트포스가 켜져 있으면 자동, 아니면 물어봄
     const target = looksCipher($("ct").value) || isHashInput($("ct").value) || hashByLen($("ct").value) || isJwtHS($("ct").value) || /^\*[0-9A-Fa-f]{40}$/.test($("ct").value.trim());
     if ((!lastSolve || !lastSolve.length) && wordlistText && (!$("optDict") || $("optDict").checked) && target) {
-      if ($("optBrute") && $("optBrute").checked) { trace("자동 브루트포스 ON → 사전 대입/크랙 시작", "step"); scheduleDict(); }
-      else trace("대상 감지 · 사전 로드됨 → 결과창 버튼 또는 ‘자동 브루트포스’ 체크로 시작", "warn");
+      if ($("optBrute") && $("optBrute").checked) { trace("자동 브루트포스 ON → 사전 대입/크랙 시작", "step", "crack"); scheduleDict(); }
+      else trace("대상 감지 · 사전 로드됨 → 결과창 버튼 또는 ‘자동 브루트포스’ 체크로 시작", "warn", "crack");
     }
   }
   function schemeLabel() { const m = { cbc: "AES-CBC", gcm: "AES-GCM", ctr: "AES-CTR", ecb: "AES-ECB", pass: "Passphrase", rc4: "RC4", des: "DES", "3des": "Triple DES" }; return m[$("scheme").value] || "복호화"; }
@@ -1475,7 +1494,7 @@
 
     // 1) 키로 복호화된 평문 (최우선)
     if (aesPlain != null && aesPlain !== "") {
-      trace("키로 복호화 성공 → 평문 표시 (" + schemeLabel() + ")", "ok");
+      trace("키로 복호화 성공 → 평문 표시 (" + schemeLabel() + ")", "ok", "crack");
       box.classList.add("ok");
       box.appendChild(el("div", "magic-t", "🔓 복호화된 평문 · " + schemeLabel()));
       box.appendChild(el("div", "magic-out", aesPlain.length > 4000 ? aesPlain.slice(0, 4000) + " …" : aesPlain));
@@ -1535,7 +1554,7 @@
 
   /* ---------- 사전 공격 (Passphrase 무차별 대입) ---------- */
   let wordlistText = null, dictSeq = 0, dictTimer = null;
-  function dstat(cls, text) { const e = $("dictStatus"); e.className = "pstatus " + cls; e.textContent = text; if (cls === "ok" || cls === "bad") trace("사전/크랙 → " + text, cls === "ok" ? "ok" : "warn"); }
+  function dstat(cls, text) { const e = $("dictStatus"); e.className = "pstatus " + cls; e.textContent = text; if (cls === "ok" || cls === "bad") trace("사전/크랙 → " + text, cls === "ok" ? "ok" : "warn", "crack"); }
   function tryPass(ct, word) {
     try {
       const wa = CryptoJS.AES.decrypt(ct, word);
@@ -1815,7 +1834,7 @@
     const tok = jwtb64u(JSON.stringify(Object.assign({}, j.header, { alg: "none" }))) + "." + jwtb64u(JSON.stringify(j.payload)) + ".";
     setVal($("ct"), tok); $("ct").dispatchEvent(new Event("input", { bubbles: true }));
     o.textContent = "alg=none 위조 토큰을 입력에 넣었습니다 (payload를 고쳐 재생성하세요):\n" + tok;
-    trace("JWT alg=none 위조 생성 → 입력에 반영", "warn");
+    trace("JWT alg=none 위조 생성 → 입력에 반영", "warn", "crack");
   }
   function jwtConfuseForge() {
     const o = $("jwtvOut"); o.classList.remove("hidden"); const j = currentJwt();
@@ -1824,7 +1843,7 @@
     const si = jwtb64u('{"alg":"HS256","typ":"JWT"}') + "." + jwtb64u(JSON.stringify(j.payload));
     const sig = CryptoJS.HmacSHA256(si, CryptoJS.enc.Utf8.parse(pem)).toString(CryptoJS.enc.Base64).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     o.textContent = "RS→HS 키혼동 위조 토큰 (공개키를 HMAC 시크릿으로 서명):\n" + si + "." + sig;
-    trace("JWT RS→HS 키혼동 위조 생성", "warn");
+    trace("JWT RS→HS 키혼동 위조 생성", "warn", "crack");
   }
   async function rsaDecrypt() {
     const o = $("rsaOut"); o.classList.remove("hidden"); o.textContent = "라이브러리 로딩…";
@@ -1856,7 +1875,7 @@
     if (off + pt.length > ct.length) { o.textContent = "평문+오프셋이 암호문보다 깁니다."; return; }
     const ks = new Uint8Array(pt.length);
     for (let i = 0; i < pt.length; i++) ks[i] = ct[off + i] ^ pt[i];
-    trace("known-plaintext → 키스트림 " + ks.length + "B 복구", "step");
+    trace("known-plaintext → 키스트림 " + ks.length + "B 복구", "step", "decode");
     let period = null;
     for (let L = 1; L <= ks.length >> 1; L++) { let ok = true; for (let i = L; i < ks.length; i++) if (ks[i] !== ks[i % L]) { ok = false; break; } if (ok) { period = L; break; } }
     o.appendChild(el("div", "solve-text", "키스트림(hex): " + u8ToHex(ks)));
@@ -1864,11 +1883,11 @@
       const key = ks.slice(0, period), t = new TextDecoder("utf-8", { fatal: false }).decode(xorBytes(ct, key));
       o.appendChild(el("div", "solve-text", "반복키 감지 · 키 길이 " + period + " · 키(hex): " + u8ToHex(key)));
       const b = el("div", "magic-out"); b.style.marginTop = "8px"; b.textContent = t.length > 3000 ? t.slice(0, 3000) + " …" : t; o.appendChild(b);
-      trace("반복키 " + period + "B 복구 → 전체 XOR 복호화 완료", "ok");
+      trace("반복키 " + period + "B 복구 → 전체 XOR 복호화 완료", "ok", "decode");
     } else {
       const region = new TextDecoder("utf-8", { fatal: false }).decode(xorBytes(ct.slice(off, off + ks.length), ks));
       o.appendChild(el("div", "solve-text", "비반복 키스트림 — 같은 오프셋의 다른 메시지를 이 키스트림으로 복호화할 수 있습니다. 알려진 구간: " + JSON.stringify(region)));
-      trace("비반복 키스트림(부분) 복구", "info");
+      trace("비반복 키스트림(부분) 복구", "info", "decode");
     }
   }
   async function paddingOracleSim() {
@@ -1877,7 +1896,7 @@
     const key = CryptoJS.lib.WordArray.random(16), iv = CryptoJS.lib.WordArray.random(16);
     const ct = waToU8(CryptoJS.AES.encrypt(CryptoJS.enc.Utf8.parse(ptStr), key, { iv: iv, mode: CryptoJS.mode.CBC, padding: CryptoJS.pad.Pkcs7 }).ciphertext), ivU = waToU8(iv);
     const blocks = ct.length / 16;
-    trace("패딩오라클: 평문 " + ptStr.length + "자 → CBC 암호화 " + ct.length + "B(" + blocks + "블록). 공격 로직은 키를 안 씀", "step");
+    trace("패딩오라클: 평문 " + ptStr.length + "자 → CBC 암호화 " + ct.length + "B(" + blocks + "블록). 공격 로직은 키를 안 씀", "step", "crack");
     let calls = 0;
     const oracle = (prev, block) => {
       calls++;
@@ -1897,11 +1916,11 @@
           prev[pos] = g;
           if (oracle(prev, target)) { if (pad === 1 && pos > 0) { const p2 = prev.slice(); p2[pos - 1] ^= 0xff; if (!oracle(p2, target)) continue; } inter[pos] = g ^ pad; found = true; break; }
         }
-        if (!found) trace("블록 " + bi + " pos " + pos + " 복구 실패", "warn");
+        if (!found) trace("블록 " + bi + " pos " + pos + " 복구 실패", "warn", "crack");
         await new Promise((r) => setTimeout(r, 0));
       }
       for (let j = 0; j < 16; j++) recovered[bi * 16 + j] = inter[j] ^ prevReal[j];
-      trace("블록 " + (bi + 1) + "/" + blocks + " 복구 완료 · 누적 오라클 " + calls.toLocaleString() + "회", "ok");
+      trace("블록 " + (bi + 1) + "/" + blocks + " 복구 완료 · 누적 오라클 " + calls.toLocaleString() + "회", "ok", "crack");
     }
     let out = recovered; const padLen = out[out.length - 1]; if (padLen >= 1 && padLen <= 16) out = out.slice(0, out.length - padLen);
     const rec = new TextDecoder("utf-8", { fatal: false }).decode(out), secs = ((performance.now() - t0) / 1000).toFixed(2);
@@ -1909,7 +1928,7 @@
     o.appendChild(el("div", "solve-text", "복구된 평문 (키 없이, 오라클 " + calls.toLocaleString() + "회 · " + secs + "s):"));
     const b = el("div", "magic-out"); b.textContent = rec; o.appendChild(b);
     o.appendChild(el("div", "solve-text", rec === ptStr ? "✓ 원본과 일치 — CBC 패딩 오라클이 존재하면 키 없이 평문 전체가 복원됩니다." : "부분 복구."));
-    trace("패딩오라클 시연 완료 · " + (rec === ptStr ? "원본과 일치" : "부분"), rec === ptStr ? "ok" : "warn");
+    trace("패딩오라클 시연 완료 · " + (rec === ptStr ? "원본과 일치" : "부분"), rec === ptStr ? "ok" : "warn", "crack");
   }
   function runCribDrag() {
     const o = $("mtpOut"); o.classList.remove("hidden"); o.textContent = "";
@@ -1932,7 +1951,7 @@
     o.appendChild(el("div", "solve-text", "C1⊕C2 = P1⊕P2 · " + n + "B · 히트 " + hits.length + "개 (한쪽에 크립이 있으면 다른쪽 평문 조각):"));
     hits.slice(0, 15).forEach((h) => o.appendChild(el("div", "solve-text", "off " + h.off + " · \"" + h.crib + "\" ↔ \"" + h.other + "\"")));
     if (!hits.length) o.appendChild(el("div", "solve-text", "히트 없음 — 같은 키스트림이 아니거나 크립이 안 맞습니다."));
-    trace("MTP 크립드래그 · 히트 " + hits.length, "step");
+    trace("MTP 크립드래그 · 히트 " + hits.length, "step", "decode");
   }
   function shareState() {
     const st = {}; ["scheme", "key", "keyFmt", "iv", "ivFmt", "ctFmt", "ct"].forEach((f) => (st[f] = $(f).value));
@@ -2174,7 +2193,7 @@
       const input = $("ct").value.trim();
       if (!input) { setVal($("pt"), ""); status("pt", "idle", ""); status("ct", "idle", ""); aesPlain = null; renderFinal(); return; }
       if (!$("key").value.trim()) { setVal($("pt"), ""); status("ct", "idle", ""); status("pt", "idle", "🔑 키를 입력하면 여기서 복호화됩니다 (형식 분석은 위 자동)"); aesPlain = null; renderFinal(); return; }
-      trace("키로 복호화 시도 → " + schemeLabel(), "step");
+      trace("키로 복호화 시도 → " + schemeLabel(), "step", "crack");
       try {
         const r = await decrypt(scheme, input);
         setVal($("pt"), r.text);
@@ -2184,7 +2203,7 @@
         aesPlain = r.text; renderFinal();
       } catch (e) {
         status("pt", "bad", errMsg(scheme, e));
-        trace("복호화 실패 → " + errMsg(scheme, e).slice(0, 44), "warn");
+        trace("복호화 실패 → " + errMsg(scheme, e).slice(0, 44), "warn", "crack");
         aesPlain = null; renderFinal();
       }
     }
@@ -2352,7 +2371,7 @@
     $("kpRun").onclick = knownPlaintext;
     $("poRun").onclick = paddingOracleSim;
     $("dcToggle").onclick = () => { const c = $("console").classList.toggle("collapsed"); document.body.classList.toggle("console-collapsed", c); $("dcToggle").textContent = c ? "▴ 펼치기" : "▾ 접기"; };
-    $("dcClear").onclick = () => { $("traceLog").textContent = ""; traceT0 = performance.now(); };
+    $("dcClear").onclick = () => { traceClear(); };
     $("outEnc").onchange = () => { analyzeNow(); if ($("optDecrypt").checked) schedule("ct"); save(); };
     $("shareLink").onclick = () => { const h = shareState(); if (h) { history.replaceState(null, "", location.pathname + h); copy(location.href, $("shareLink")); } };
     $("exportOpenssl").onclick = () => { const o = $("exportOut"); o.classList.remove("hidden"); o.textContent = opensslCode(); };
